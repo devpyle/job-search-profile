@@ -34,6 +34,10 @@ Each job file contains these sections (used selectively when generating artifact
 - **Career arc:** Deutsche Bank BA (2011–2019) → First Citizens Bank BA (2019–2021) → Broadridge PO/SM (2021–2024) → Jenius Bank (SMBC) Middleware PO (2024–present)
 - **Core differentiator:** API platform strategy + platform modernization in regulated environments
 
+## Resume and Cover Letter Generation
+
+**Always read `docs/resume-generation-rules.md` first and follow those rules exactly before generating any resume or cover letter.** This includes the fit assessment in Rule 0, which must run before any writing begins.
+
 ## Generating Artifacts
 
 When generating a resume, cover letter, or other output:
@@ -46,3 +50,11 @@ When generating a resume, cover letter, or other output:
 ## Adding New Content
 
 New job entries should follow the existing frontmatter schema (`type`, `company`, `title`, `location`, `start`, `end`, `domain`, `keywords`) and include all standard sections. Update `technical-skills.md` if new tools were used.
+
+## Input Directory (`input/`)
+
+Staging area for raw materials — nothing here goes into output directly. Three subfolders:
+
+- **`input/job-postings/`** — job descriptions for roles David is targeting. Read these to tailor resumes and cover letters: extract required skills, keywords, and role framing to match against `docs/`.
+- **`input/old-resumes/`** — previous resume files. Mine these for achievements, metrics, or role details not yet captured in `docs/` and backfill into the appropriate job markdown files.
+- **`input/raw-notes/`** — informal notes about past roles. Treat as unstructured input to be cleaned up and merged into the relevant `docs/` job files using the standard section format.

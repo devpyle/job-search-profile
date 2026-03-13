@@ -3,6 +3,7 @@
 
 import json
 import os
+import re
 import smtplib
 import time
 from dataclasses import dataclass
@@ -54,13 +55,73 @@ class Job:
         return "Not listed"
 
 
+# Job board search/category page URL fragments — browse pages, not individual listings
+CATEGORY_URL_FRAGMENTS = [
+    "glassdoor.com/Job/", "indeed.com/q-", "indeed.com/jobs",
+    "linkedin.com/jobs/search", "linkedin.com/jobs/api-", "linkedin.com/jobs/product-",
+    "ziprecruiter.com/Jobs/", "jobgether.com/remote-jobs/",
+    "remoterocketship.com/jobs/", "remoterocketship.com/us/jobs/",
+    "remotive.com/remote-jobs/", "wellfound.com/jobs", "builtin",
+    "flexjobs.com/jobs", "workingnomads.com/jobs", "getwork.com/jobs",
+    "careerjet.com", "simplyhired.com/search", "jobgether.com/en/",
+    "dailyremote.com/remote-", "beamjobs.com", "resumeworded.com",
+    "zety.com", "kickresume.com", "remotebob.io",
+]
+
+# Non-job content to filter (blog posts, articles, resume guides, cost breakdowns)
+NON_JOB_TITLE_RE = re.compile(
+    r"resume (samples?|templates?|examples?|guide)|"
+    r"(cost|price|pricing)\s+(breakdown|guide|in \d{4})|"
+    r"how to (write|build|create)|"
+    r"(top|best)\s+\d+\s+(tools?|skills?|tips?|ways?)",
+    re.IGNORECASE
+)
+
+# Title patterns that indicate a category/search page rather than a single job
+CATEGORY_TITLE_RE = re.compile(
+    r"\d[\d,+]+\s+\w.*jobs?\s+(in|for|at)\b"        # "2,129 product owner jobs in..."
+    r"|^(browse|search(\s+the\s+best)?)\s+"           # "Browse 57..." / "Search the best..."
+    r"|jobs?\s+in\s+(remote|united states|us)\b"
+    r"|(top|best)\s+remote\s+\w.*jobs?\s+(in|from)\b" # "Top/Best Remote PM Jobs in..."
+    r"|^\d[\d,+]+\s+(remote|open)\s+\w+\s+jobs?\b"   # "312 product owner remote jobs"
+    r"|today.s top \d",                               # "Today's top 4000+..."
+    re.IGNORECASE
+)
+
+
+def is_category_page(title: str, url: str) -> bool:
+    if any(frag in url for frag in CATEGORY_URL_FRAGMENTS):
+        return True
+    if bool(CATEGORY_TITLE_RE.search(title)):
+        return True
+    if bool(NON_JOB_TITLE_RE.search(title)):
+        return True
+    return False
+
+
+STAFFING_KEYWORDS = [
+    "staffing", "recruiting", "recruiter", "talent solutions", "search group",
+    "placement", "manpower", "robert half", "adecco", "kelly services",
+    "randstad", "insight global", "apex systems", "our client", "on behalf of",
+]
+
+MIN_SALARY = 120_000
+
+
+def is_staffing(title: str, company: str, description: str) -> bool:
+    combined = f"{title} {company} {description}".lower()
+    return any(kw in combined for kw in STAFFING_KEYWORDS)
+
+
+def is_below_salary_floor(salary_min: Optional[float]) -> bool:
+    """Drop only if salary is explicitly listed AND under the floor."""
+    return salary_min is not None and salary_min > 0 and salary_min < MIN_SALARY
+
+
 def rate(title: str, description: str = "", location: str = "", salary_min=None) -> int:
     t = title.lower()
     d = description.lower()
     combined = t + " " + d + " " + location.lower()
-
-    if any(w in combined for w in ["contract", "staffing", "temp ", "contractor"]):
-        return 2
 
     is_po_pm = any(w in t for w in ["product owner", "product manager"])
     is_ba_fa = any(w in t for w in ["business analyst", "functional analyst"])
@@ -145,9 +206,9 @@ def search_adzuna() -> list[Job]:
 
 def search_brave() -> list[Job]:
     queries = [
-        '"product owner" fintech API remote job -staffing -recruiter',
-        '"product manager" middleware platform Raleigh Durham Charlotte RTP job',
-        '"business analyst" digital banking API remote job',
+        '"product owner" fintech API remote job -staffing -recruiter -resume -"how to"',
+        '"product manager" middleware platform Raleigh Durham Charlotte RTP job -staffing -recruiter',
+        '"business analyst" digital banking API remote job -staffing -recruiter -resume',
     ]
     jobs = []
     headers = {
@@ -178,10 +239,10 @@ def search_brave() -> list[Job]:
 
 def search_tavily() -> list[Job]:
     queries = [
-        '"product owner" OR "product manager" API platform middleware remote job posted this week',
-        '"product owner" OR "product manager" digital banking fintech Raleigh NC job',
-        '"business analyst" OR "functional analyst" API integration fintech remote job this week',
-        '"product owner" SaaS enterprise software platform remote job posted this week',
+        '"product owner" OR "product manager" API platform middleware remote "job opening" OR "now hiring" OR "apply now"',
+        '"product owner" OR "product manager" digital banking fintech remote "job opening" OR "hiring" OR "apply"',
+        '"business analyst" OR "functional analyst" API integration fintech remote "job opening" OR "hiring" OR "apply"',
+        '"product owner" OR "product manager" SaaS enterprise platform remote "job opening" OR "now hiring" OR "apply now"',
     ]
     jobs = []
     for q in queries:
@@ -209,6 +270,100 @@ def search_tavily() -> list[Job]:
     return jobs
 
 
+LI_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    )
+}
+LI_BASE_URL = "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search"
+LI_NC_LOCATIONS = {
+    "raleigh", "durham", "chapel hill", "cary", "morrisville", "apex",
+    "holly springs", "wake forest", "research triangle", "rtp",
+    ", nc", "north carolina",
+}
+
+LI_REMOTE_QUERIES = [
+    "product owner API platform",
+    "product manager middleware fintech",
+    "platform product manager",
+    "product owner digital banking",
+]
+
+LI_RALEIGH_QUERIES = [
+    "product owner Raleigh NC",
+    "product manager Raleigh Durham RTP",
+    "business analyst Raleigh NC",
+    'product owner "First Citizens" OR "Q2" OR "Red Hat" OR "SAS Institute" OR "Bandwidth" OR "Pendo"',
+    'product manager "Fidelity" OR "MetLife" OR "Cisco" OR "IBM" OR "NetApp" OR "Lenovo" Raleigh',
+]
+
+
+def _li_fetch(keywords: str, remote: bool) -> list[Job]:
+    from bs4 import BeautifulSoup
+    params = {
+        "keywords": keywords,
+        "geoId": "103644278",
+        "f_TPR": "r604800",
+        "start": 0,
+    }
+    if remote:
+        params["f_WT"] = "2"
+    r = requests.get(LI_BASE_URL, params=params, headers=LI_HEADERS, timeout=10)
+    r.raise_for_status()
+    soup = BeautifulSoup(r.text, "html.parser")
+    jobs = []
+    for card in soup.find_all("li"):
+        title_el = card.find("h3")
+        company_el = card.find("h4")
+        loc_el = card.find("span", class_=lambda c: c and "job-search-card__location" in c)
+        link_el = card.find("a", href=True)
+        if not (title_el and company_el):
+            continue
+        loc = loc_el.text.strip() if loc_el else ""
+        # Location filter
+        loc_lower = loc.lower()
+        if remote:
+            if loc_lower and "remote" not in loc_lower and loc_lower != "united states":
+                continue
+        else:
+            if not any(area in loc_lower for area in LI_NC_LOCATIONS):
+                continue
+        jobs.append(Job(
+            title=title_el.text.strip(),
+            company=company_el.text.strip(),
+            location=loc,
+            url=link_el["href"].split("?")[0] if link_el else "",
+            source="LinkedIn",
+        ))
+    return jobs
+
+
+def search_linkedin() -> list[Job]:
+    try:
+        from bs4 import BeautifulSoup  # noqa: F401 — verify import available
+    except ImportError:
+        print("  BeautifulSoup not installed, skipping LinkedIn")
+        return []
+
+    jobs = []
+    for q in LI_REMOTE_QUERIES:
+        try:
+            results = _li_fetch(q, remote=True)
+            jobs.extend(results)
+        except Exception as e:
+            print(f"  LinkedIn remote query failed ({q[:40]}): {e}")
+
+    for q in LI_RALEIGH_QUERIES:
+        try:
+            results = _li_fetch(q, remote=False)
+            jobs.extend(results)
+        except Exception as e:
+            print(f"  LinkedIn Raleigh query failed ({q[:40]}): {e}")
+
+    return jobs
+
+
 def build_report(jobs: list[Job], seen: set, now: datetime) -> tuple[str, list[Job], set]:
     new_jobs = []
     new_seen = set(seen)
@@ -216,10 +371,17 @@ def build_report(jobs: list[Job], seen: set, now: datetime) -> tuple[str, list[J
         key = job.dedup_key()
         if not key:
             continue
-        if key not in seen:
-            job.stars = rate(job.title, job.description, job.location, job.salary_min)
-            new_jobs.append(job)
-            new_seen.add(key)
+        if key in new_seen:
+            continue
+        if is_category_page(job.title, job.url):
+            continue
+        if is_staffing(job.title, job.company, job.description):
+            continue
+        if is_below_salary_floor(job.salary_min):
+            continue
+        job.stars = rate(job.title, job.description, job.location, job.salary_min)
+        new_jobs.append(job)
+        new_seen.add(key)
 
     new_jobs.sort(key=lambda j: j.stars, reverse=True)
     strong = sum(1 for j in new_jobs if j.stars >= 4)
@@ -296,7 +458,11 @@ def main():
     tavily_jobs = search_tavily()
     print(f"  {len(tavily_jobs)} results")
 
-    all_jobs = adzuna_jobs + brave_jobs + tavily_jobs
+    print("Searching LinkedIn...")
+    linkedin_jobs = search_linkedin()
+    print(f"  {len(linkedin_jobs)} results")
+
+    all_jobs = adzuna_jobs + brave_jobs + tavily_jobs + linkedin_jobs
     report, new_jobs, new_seen = build_report(all_jobs, seen, now)
 
     slot = "am" if now.hour < 12 else "pm"

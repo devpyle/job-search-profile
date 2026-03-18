@@ -50,7 +50,7 @@ JOB_DOCS = [
 
 # Only included when the job description contains crypto/web3 keywords.
 # Set to None or "" to disable.
-CRYPTO_DOC = "thugdao-dao-council.md"
+CRYPTO_DOC = "YYYY-YYYY-company-title.md"  # or None to disable
 
 # ── SEARCH QUERIES ────────────────────────────────────────────────────────────
 # Edit these to match your target job titles, industries, and specialties.

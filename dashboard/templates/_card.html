@@ -1,0 +1,29 @@
+{% set color = status_colors[job.status] if job.status in status_colors else '#94a3b8' %}
+<div class="job-card" data-job-id="{{ job.id }}" data-status="{{ job.status }}">
+  <div class="status-bar" style="background: {{ color }}"></div>
+  <div class="card-body">
+    <div class="card-title">{{ job.title }}</div>
+    <div class="card-meta">
+      <span class="company">{{ job.company or '—' }}</span>
+      {% if job.location %}<span class="sep">·</span><span class="location">{{ job.location }}</span>{% endif %}
+    </div>
+    {% if job.salary and job.salary != 'Not listed' %}
+    <div class="card-salary">{{ job.salary }}</div>
+    {% endif %}
+    {% if job.reason %}
+    <div class="card-reason">↳ {{ job.reason | truncate(100) }}</div>
+    {% endif %}
+    <div class="card-footer">
+      <span class="card-source">{{ job.source or '' }}</span>
+      <div class="card-actions">
+        {% if job.note_count %}
+        <span class="note-badge" title="{{ job.note_count }} note(s)">📝 {{ job.note_count }}</span>
+        {% endif %}
+        {% if job.has_final_docs %}
+        <span class="doc-badge" title="Docs ready">📄</span>
+        {% endif %}
+        <a href="{{ url_for('job_detail', job_id=job.id) }}" class="btn-sm">View</a>
+      </div>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+{% block title %}Draft — {{ job.title }}{% endblock %}
+
+{% block content %}
+<div class="draft-header">
+  <a href="{{ url_for('job_detail', job_id=job.id) }}" class="back-link">← {{ job.title }} @ {{ job.company }}</a>
+  <div class="draft-version-picker">
+    <label>Version:</label>
+    <select onchange="location.href=this.value">
+      {% for d in all_docs %}
+      <option value="{{ url_for('view_draft', job_id=job.id, doc_id=d.id) }}"
+              {% if d.id == doc.id %}selected{% endif %}>
+        v{{ d.version }} — {{ d.generated_at[:16].replace('T',' ') }}
+        {% if d.is_final %}★ Final{% endif %}
+      </option>
+      {% endfor %}
+    </select>
+  </div>
+</div>
+
+<div class="draft-meta">
+  Editing v{{ doc.version }} &nbsp;|&nbsp;
+  Generated {{ doc.generated_at[:16].replace('T',' ') }}
+  {% if doc.generation_notes %}&nbsp;|&nbsp; <em>{{ doc.generation_notes }}</em>{% endif %}
+  {% if doc.is_final %}&nbsp;|&nbsp; <span class="final-badge">Final</span>{% endif %}
+</div>
+
+<!-- Regenerate with instructions -->
+<div class="regen-bar">
+  <input type="text" id="regen-input" class="regen-input"
+         placeholder="Regeneration instructions (optional) — e.g. 'lead with Broadridge API work', 'shorten to one page'">
+  <button class="btn btn-outline" onclick="regenerate('{{ job.id }}')" id="regen-btn">
+    ↺ Regenerate
+  </button>
+</div>
+
+<!-- Two-panel editor -->
+<div class="draft-panels">
+  <div class="draft-panel">
+    <div class="panel-header">
+      <span>📄 Resume</span>
+      <div class="panel-actions">
+        <a href="{{ url_for('download_doc', job_id=job.id, doc_id=doc.id, doc_type='resume') }}"
+           class="btn-sm">⬇ Download DOCX</a>
+      </div>
+    </div>
+    <textarea class="doc-editor" id="resume-editor" spellcheck="true">{{ doc.resume_md or '' }}</textarea>
+  </div>
+
+  <div class="draft-panel">
+    <div class="panel-header">
+      <span>✉️ Cover Letter</span>
+      <div class="panel-actions">
+        <a href="{{ url_for('download_doc', job_id=job.id, doc_id=doc.id, doc_type='coverletter') }}"
+           class="btn-sm">⬇ Download DOCX</a>
+      </div>
+    </div>
+    <textarea class="doc-editor" id="cl-editor" spellcheck="true">{{ doc.coverletter_md or '' }}</textarea>
+  </div>
+</div>
+
+<!-- Save / finalize bar -->
+<div class="draft-actions">
+  <button class="btn btn-outline" onclick="saveDraft('{{ job.id }}', {{ doc.id }}, false)">
+    Save Edits
+  </button>
+  <button class="btn btn-primary" onclick="saveDraft('{{ job.id }}', {{ doc.id }}, true)">
+    ✓ Mark Final &amp; Move to Ready
+  </button>
+  <span class="save-status hidden" id="save-status"></span>
+</div>
+
+<div class="toast hidden" id="toast"></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function saveDraft(jobId, docId, markFinal) {
+  const resumeMd = document.getElementById("resume-editor").value;
+  const clMd     = document.getElementById("cl-editor").value;
+  const status   = document.getElementById("save-status");
+  status.textContent = "Saving…";
+  status.classList.remove("hidden");
+
+  fetch(`/jobs/${jobId}/documents/${docId}/save`, {
+    method:  "POST",
+    headers: {"Content-Type": "application/json"},
+    body:    JSON.stringify({
+      resume_md:      resumeMd,
+      coverletter_md: clMd,
+      mark_final:     markFinal,
+    }),
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (d.ok) {
+      status.textContent = "✓ Saved";
+      if (markFinal) {
+        setTimeout(() => location.href = `/jobs/${jobId}`, 800);
+      }
+    } else {
+      status.textContent = "Error: " + d.error;
+      showToast("Save failed", true);
+    }
+  });
+}
+
+function regenerate(jobId) {
+  const btn   = document.getElementById("regen-btn");
+  const instr = document.getElementById("regen-input").value.trim();
+  btn.disabled    = true;
+  btn.textContent = "Generating…";
+
+  fetch(`/jobs/${jobId}/generate`, {
+    method:  "POST",
+    headers: {"Content-Type": "application/json"},
+    body:    JSON.stringify({ instructions: instr }),
+  })
+  .then(r => r.json())
+  .then(d => {
+    btn.disabled    = false;
+    btn.textContent = "↺ Regenerate";
+    if (d.ok) {
+      showToast("New version generated! Redirecting…");
+      setTimeout(() => {
+        location.href = `/jobs/${jobId}/documents/${d.doc_id}`;
+      }, 1000);
+    } else {
+      showToast("Error: " + d.error, true);
+    }
+  });
+}
+
+function showToast(msg, isError=false) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.className   = "toast" + (isError ? " toast-error" : "");
+  setTimeout(() => t.classList.add("hidden"), 3500);
+}
+
+// Auto-save on Ctrl+S
+document.addEventListener("keydown", e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === "s") {
+    e.preventDefault();
+    saveDraft("{{ job.id }}", {{ doc.id }}, false);
+  }
+});
+</script>
+{% endblock %}

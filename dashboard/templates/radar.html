@@ -1,0 +1,238 @@
+{% extends "base.html" %}
+{% block title %}Radar{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h2>Job Radar</h2>
+  {% if reports %}
+  <div class="report-selector">
+    <label>Report:</label>
+    <select onchange="location.href=this.value">
+      {% for r in reports %}
+      <option value="{{ url_for('radar', date=r.date, slot=r.slot.lower()) }}"
+        {% if current and current.filename == r.filename %}selected{% endif %}>
+        {% if r.is_reviewed %}✓ {% endif %}{{ r.date }} {{ r.slot }}
+      </option>
+      {% endfor %}
+    </select>
+  </div>
+  {% endif %}
+  {% if dismissed_count %}
+  <a href="?dismissed={{ '0' if show_dismissed else '1' }}" class="btn-sm dismissed-toggle">
+    {% if show_dismissed %}Hide dismissed ({{ dismissed_count }}){% else %}Show dismissed ({{ dismissed_count }}){% endif %}
+  </a>
+  {% endif %}
+  {% if current %}
+    {% if is_reviewed %}
+    <span class="reviewed-badge">✓ Reviewed</span>
+    {% else %}
+    <button class="btn-sm mark-reviewed-btn" onclick="markReviewed('{{ current.filename }}', this)">
+      Mark Reviewed
+    </button>
+    {% endif %}
+  {% endif %}
+</div>
+
+{% if not jobs %}
+  <div class="empty-state">No jobs found in this report.</div>
+{% else %}
+
+  <!-- Tier filter tabs -->
+  <div class="filter-tabs">
+    <button class="tab active" onclick="filterTier('all', this)">All ({{ jobs|length }})</button>
+    {% for tier in ['Apply Now', 'Worth a Look', 'Weak Match', 'Skip'] %}
+    {% set count = jobs | selectattr('tier', 'equalto', tier) | list | length %}
+    {% if count %}
+    <button class="tab" onclick="filterTier('{{ tier }}', this)">
+      {{ tier }} ({{ count }})
+    </button>
+    {% endif %}
+    {% endfor %}
+  </div>
+
+  <div class="radar-list" id="radar-list">
+    {% for job in jobs %}
+    <div class="radar-card {% if job.is_saved %}is-saved{% endif %}"
+         data-tier="{{ job.tier }}">
+      <div class="radar-card-header">
+        <div>
+          <div class="radar-title">{{ job.title }}</div>
+          <div class="radar-meta">
+            <strong>{{ job.company or '—' }}</strong>
+            {% if job.location %} · {{ job.location }}{% endif %}
+            {% if job.salary and job.salary != 'Not listed' %} · {{ job.salary }}{% endif %}
+            {% if job.posted %} · {{ job.posted }}{% endif %}
+            · <em>{{ job.source }}</em>
+          </div>
+        </div>
+        <div class="radar-actions">
+          {% if job.url %}
+          <a href="{{ job.url }}" target="_blank" class="btn-sm btn-outline">↗ Posting</a>
+          {% endif %}
+          {% if job.is_saved %}
+            <span class="saved-badge">✓ Saved</span>
+          {% else %}
+            <button class="btn-sm btn-primary save-btn"
+                    data-job='{{ job | tojson }}'
+                    onclick="saveJob(this)">
+              + Save
+            </button>
+          {% endif %}
+          {% if job.is_dismissed %}
+          <button class="btn-sm undismiss-btn" onclick="undismissJob('{{ job.job_id }}', this)">↩ Restore</button>
+          {% else %}
+          <button class="btn-sm dismiss-btn" title="Dismiss" onclick="dismissJob('{{ job.job_id }}', this)">✕</button>
+          {% endif %}
+        </div>
+      </div>
+      {% if job.reason %}
+      <div class="radar-reason">↳ {{ job.reason }}</div>
+      {% endif %}
+      {% if job.description %}
+      <div class="radar-desc">{{ job.description | truncate(300) }}</div>
+      {% endif %}
+      <div class="radar-comment-row">
+        <textarea class="radar-comment-input" rows="2"
+                  placeholder="Notes on why this isn't a fit, search tweaks, etc…"
+                  data-job-id="{{ job.job_id }}"
+                  id="comment-{{ job.job_id }}">{{ job.comment }}</textarea>
+        <button class="btn-sm comment-save-btn" onclick="saveComment('{{ job.job_id }}', this)">Save</button>
+        <span class="comment-saved-indicator {% if not job.comment %}hidden{% endif %}" id="ci-{{ job.job_id }}">💬</span>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+{% endif %}
+
+<!-- Toast notification -->
+<div class="toast hidden" id="toast"></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function filterTier(tier, btn) {
+  document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+  btn.classList.add("active");
+  document.querySelectorAll(".radar-card").forEach(card => {
+    if (tier === "all" || card.dataset.tier === tier) {
+      card.style.display = "";
+    } else {
+      card.style.display = "none";
+    }
+  });
+}
+
+function saveJob(btn) {
+  const job = JSON.parse(btn.dataset.job);
+  btn.disabled    = true;
+  btn.textContent = "Saving…";
+  fetch("/jobs/save", {
+    method:  "POST",
+    headers: {"Content-Type": "application/json"},
+    body:    JSON.stringify({
+      job_id:      job.job_id,
+      url:         job.url,
+      title:       job.title,
+      company:     job.company,
+      location:    job.location,
+      salary:      job.salary,
+      source:      job.source,
+      tier:        job.tier,
+      reason:      job.reason,
+      description: job.description,
+      posted:      job.posted,
+      report_file: job.report_file,
+    }),
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (d.ok) {
+      btn.outerHTML = '<span class="saved-badge">✓ Saved</span>';
+      btn.closest(".radar-card").classList.add("is-saved");
+      showToast("Saved to board!");
+    } else {
+      btn.disabled    = false;
+      btn.textContent = "+ Save";
+      showToast("Error: " + d.error, true);
+    }
+  });
+}
+
+function markReviewed(filename, btn) {
+  btn.disabled    = true;
+  btn.textContent = "…";
+  fetch("/radar/reviewed", {
+    method:  "POST",
+    headers: {"Content-Type": "application/json"},
+    body:    JSON.stringify({ filename }),
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (d.ok) {
+      btn.outerHTML = '<span class="reviewed-badge">✓ Reviewed</span>';
+      showToast("Report marked as reviewed");
+    }
+  });
+}
+
+function saveComment(jobId, btn) {
+  const ta  = document.getElementById("comment-" + jobId);
+  const ind = document.getElementById("ci-" + jobId);
+  const body = ta.value.trim();
+  btn.disabled    = true;
+  btn.textContent = "…";
+  fetch(`/radar/comments/${jobId}`, {
+    method:  "POST",
+    headers: {"Content-Type": "application/json"},
+    body:    JSON.stringify({ body }),
+  })
+  .then(r => r.json())
+  .then(d => {
+    btn.disabled    = false;
+    btn.textContent = "Save";
+    if (d.ok) {
+      if (body) ind.classList.remove("hidden");
+      else      ind.classList.add("hidden");
+      showToast("Comment saved");
+    }
+  });
+}
+
+function dismissJob(jobId, btn) {
+  fetch(`/radar/dismiss/${jobId}`, {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ undo: false }),
+  }).then(r => r.json()).then(d => {
+    if (d.ok) {
+      const card = btn.closest(".radar-card");
+      card.style.transition = "opacity 0.2s";
+      card.style.opacity    = "0";
+      setTimeout(() => card.remove(), 200);
+    }
+  });
+}
+
+function undismissJob(jobId, btn) {
+  fetch(`/radar/dismiss/${jobId}`, {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ undo: true }),
+  }).then(r => r.json()).then(d => {
+    if (d.ok) {
+      const card = btn.closest(".radar-card");
+      card.style.transition = "opacity 0.2s";
+      card.style.opacity    = "0";
+      setTimeout(() => card.remove(), 200);
+    }
+  });
+}
+
+function showToast(msg, isError=false) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.className   = "toast" + (isError ? " toast-error" : "");
+  setTimeout(() => t.classList.add("hidden"), 3000);
+}
+</script>
+{% endblock %}

@@ -9,11 +9,18 @@ Built and maintained using [Claude Code](https://claude.ai/code).
 ## What It Does
 
 **Automated Job Radar**
-- Queries Adzuna, Brave Search, and Tavily twice a day (9am and 4pm via cron)
+- Queries Adzuna, Brave Search, Tavily, and LinkedIn twice a day (9am and 4pm via cron)
 - Deduplicates results across runs so you only see new postings
-- Rates each job 1–5 stars based on keyword match to your target roles
+- Rates each job with Claude Haiku — `Apply Now / Worth a Look / Weak Match / Skip` — with a one-sentence reason
 - Saves a dated markdown report to `output/job-radar/`
-- Emails the report to your inbox automatically
+- Emails the report with priority jobs at the top and a filtered appendix at the bottom
+
+**Telegram Bot (optional)**
+- `/radar` — trigger a job search from your phone
+- `/latest` — pull up the most recent report
+- `/status` — last run summary
+- Chat with any supported AI model using your full career profile as context
+- Supports Claude, GPT-4o, Gemini, Kimi K2, DeepSeek, and any OpenRouter or Nvidia NIM model
 
 **Resume & Cover Letter Generation (on demand)**
 - Claude reads your full career profile from structured docs in `docs/`
@@ -45,14 +52,16 @@ job-search-profile/
 │   ├── cover-letters/                 # generated cover letters
 │   └── job-radar/                     # daily search reports + dedup state
 └── scripts/
-    └── job_radar.py                   # automated search + email script
+    ├── job_radar.py                   # automated search + email script
+    ├── telegram_bot.py                # Telegram bot with multi-model AI chat
+    └── test_linkedin.py               # LinkedIn scraper test
 ```
 
 ---
 
 ## Daily Workflow
 
-**Job radar runs automatically.** Check your email at 9am and 4pm. 5-star jobs are at the top — those are priority applications.
+**Job radar runs automatically.** Check your email at 9am and 4pm. Apply Now jobs are at the top — those are priority applications.
 
 **To generate a resume:**
 1. Save the job description to `input/job-postings/company-title.txt`
@@ -73,7 +82,9 @@ A full setup guide is in [`output/job-search-system-setup-guide.md`](output/job-
 **Prerequisites:**
 - [Claude Code](https://claude.ai/code)
 - Python 3.10+
+- [Anthropic API key](https://console.anthropic.com/) — used for Claude Haiku job rating
 - Free API keys: [Adzuna](https://developer.adzuna.com/) · [Brave Search](https://api.search.brave.com/) · [Tavily](https://tavily.com/)
 - Gmail account with an [App Password](https://myaccount.google.com/apppasswords)
+- (Optional) Telegram bot token for mobile access
 
 **Time to set up:** ~3–5 hours, most of which is writing your profile docs. Once those are solid, Claude can generate a tailored resume in under 2 minutes.

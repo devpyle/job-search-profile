@@ -1,0 +1,197 @@
+{% extends "base.html" %}
+{% block title %}{{ job.title }}{% endblock %}
+
+{% block content %}
+<div class="detail-wrap">
+
+  <!-- Left panel: job info + actions -->
+  <div class="detail-main">
+    <div class="detail-header">
+      <a href="{{ url_for('board') }}" class="back-link">← Board</a>
+      <div class="detail-status-row">
+        <span class="status-pill" style="background:{{ status_colors.get(job.status,'#94a3b8') }}">
+          {{ job.status }}
+        </span>
+        <select class="status-select" onchange="moveJob('{{ job.id }}', this.value)">
+          {% for s in statuses %}
+          <option value="{{ s }}" {% if s == job.status %}selected{% endif %}>{{ s }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+
+    <h2 class="detail-title">{{ job.title }}</h2>
+    <div class="detail-meta">
+      <span>{{ job.company or '—' }}</span>
+      {% if job.location %}<span>· {{ job.location }}</span>{% endif %}
+      {% if job.salary and job.salary != 'Not listed' %}<span>· {{ job.salary }}</span>{% endif %}
+      {% if job.source %}<span>· {{ job.source }}</span>{% endif %}
+      {% if job.posted %}<span>· {{ job.posted }}</span>{% endif %}
+    </div>
+
+    {% if job.reason %}
+    <div class="detail-reason">↳ {{ job.reason }}</div>
+    {% endif %}
+
+    {% if job.url %}
+    <a href="{{ job.url }}" target="_blank" class="btn btn-outline" style="margin:0.5rem 0 1rem">
+      ↗ View Original Posting
+    </a>
+    {% endif %}
+
+    {% if job.description %}
+    <div class="detail-description">{{ job.description }}</div>
+    {% endif %}
+
+    <!-- Generate docs section -->
+    <div class="gen-section">
+      <h3>Application Documents</h3>
+      {% if docs %}
+      <div class="doc-versions">
+        {% for d in docs %}
+        <div class="doc-version-row">
+          <span>v{{ d.version }} — {{ d.generated_at[:16] }}
+            {% if d.is_final %}<span class="final-badge">Final</span>{% endif %}
+          </span>
+          <a href="{{ url_for('view_draft', job_id=job.id, doc_id=d.id) }}" class="btn-sm">
+            Edit / Download
+          </a>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      <div class="gen-form">
+        <textarea id="gen-instructions" class="gen-instructions"
+                  placeholder="Optional instructions (e.g. 'emphasize the Broadridge API work', 'keep to one page')…"
+                  rows="2"></textarea>
+        <button class="btn btn-primary" onclick="generateDocs('{{ job.id }}')" id="gen-btn">
+          ✨ Generate Resume + Cover Letter
+        </button>
+      </div>
+      <div class="gen-status hidden" id="gen-status"></div>
+    </div>
+
+    <!-- Delete -->
+    <div class="danger-zone">
+      <button class="btn btn-danger" onclick="deleteJob('{{ job.id }}')">Remove from Board</button>
+    </div>
+  </div>
+
+  <!-- Right panel: notes -->
+  <div class="detail-sidebar">
+    <h3>Notes</h3>
+    <div class="note-form">
+      <textarea id="note-input" rows="3" placeholder="Add a note…"></textarea>
+      <button class="btn btn-primary" onclick="addNote('{{ job.id }}')">Add Note</button>
+    </div>
+    <div class="notes-list" id="notes-list">
+      {% for note in notes %}
+      <div class="note-item">
+        <div class="note-time">{{ note.created_at[:16].replace('T',' ') }}</div>
+        <div class="note-body">{{ note.body }}</div>
+      </div>
+      {% else %}
+      <div class="empty-state" id="no-notes">No notes yet.</div>
+      {% endfor %}
+    </div>
+  </div>
+
+</div>
+
+<div class="toast hidden" id="toast"></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function moveJob(jobId, status) {
+  fetch(`/jobs/${jobId}/move`, {
+    method:  "POST",
+    headers: {"Content-Type": "application/json"},
+    body:    JSON.stringify({ status }),
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (d.ok) showToast("Moved to " + status);
+    else      showToast("Error: " + d.error, true);
+  });
+}
+
+function addNote(jobId) {
+  const input = document.getElementById("note-input");
+  const body  = input.value.trim();
+  if (!body) return;
+  fetch(`/jobs/${jobId}/notes`, {
+    method:  "POST",
+    headers: {"Content-Type": "application/json"},
+    body:    JSON.stringify({ body }),
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (!d.ok) { showToast("Error: " + d.error, true); return; }
+    input.value = "";
+    const list = document.getElementById("notes-list");
+    const noNotes = document.getElementById("no-notes");
+    if (noNotes) noNotes.remove();
+    const div = document.createElement("div");
+    div.className = "note-item";
+    const now = new Date().toISOString().slice(0,16).replace("T"," ");
+    div.innerHTML = `<div class="note-time">${now}</div><div class="note-body">${body}</div>`;
+    list.prepend(div);
+    showToast("Note added");
+  });
+}
+
+function generateDocs(jobId) {
+  const btn    = document.getElementById("gen-btn");
+  const status = document.getElementById("gen-status");
+  const instr  = document.getElementById("gen-instructions").value.trim();
+  btn.disabled    = true;
+  btn.textContent = "Generating… (this takes ~30s)";
+  status.textContent = "";
+  status.classList.remove("hidden");
+
+  fetch(`/jobs/${jobId}/generate`, {
+    method:  "POST",
+    headers: {"Content-Type": "application/json"},
+    body:    JSON.stringify({ instructions: instr }),
+  })
+  .then(r => r.json())
+  .then(d => {
+    btn.disabled    = false;
+    btn.textContent = "✨ Generate Resume + Cover Letter";
+    if (d.ok) {
+      status.textContent = "✓ Generated! Redirecting to editor…";
+      setTimeout(() => {
+        location.href = `/jobs/${jobId}/documents/${d.doc_id}`;
+      }, 1000);
+    } else {
+      status.textContent = "Error: " + d.error;
+      showToast("Generation failed", true);
+    }
+  })
+  .catch(e => {
+    btn.disabled    = false;
+    btn.textContent = "✨ Generate Resume + Cover Letter";
+    status.textContent = "Error: " + e.message;
+  });
+}
+
+function deleteJob(jobId) {
+  if (!confirm("Remove this job from the board? This cannot be undone.")) return;
+  fetch(`/jobs/${jobId}/delete`, { method: "POST" })
+    .then(r => r.json())
+    .then(d => {
+      if (d.ok) location.href = "/";
+      else showToast("Error: " + d.error, true);
+    });
+}
+
+function showToast(msg, isError=false) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.className   = "toast" + (isError ? " toast-error" : "");
+  setTimeout(() => t.classList.add("hidden"), 3500);
+}
+</script>
+{% endblock %}

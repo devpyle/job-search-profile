@@ -3,3 +3,8 @@
 .env
 __pycache__/
 *.pyc
+dashboard/data/*.db
+output/*.zip
+input/*.zip
+output/documents/
+output/job-radar/debug_job_log.txt

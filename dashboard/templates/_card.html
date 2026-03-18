@@ -22,6 +22,9 @@
         {% if job.has_final_docs %}
         <span class="doc-badge" title="Docs ready">📄</span>
         {% endif %}
+        {% if job.status == 'Reviewing' %}
+        <span class="checklist-badge" title="Open to see reviewing checklist">☑</span>
+        {% endif %}
         <a href="{{ url_for('job_detail', job_id=job.id) }}" class="btn-sm">View</a>
       </div>
     </div>

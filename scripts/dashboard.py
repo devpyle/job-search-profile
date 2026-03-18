@@ -141,6 +141,12 @@ def init_db():
             reviewed_at TEXT NOT NULL
         );
 
+        CREATE TABLE IF NOT EXISTS job_apply_urls (
+            job_id    TEXT PRIMARY KEY,
+            apply_url TEXT NOT NULL,
+            saved_at  TEXT NOT NULL
+        );
+
         CREATE TABLE IF NOT EXISTS documents (
             id                INTEGER PRIMARY KEY AUTOINCREMENT,
             job_id            TEXT NOT NULL,
@@ -698,14 +704,34 @@ def job_detail(job_id):
     docs = db.execute(
         "SELECT * FROM documents WHERE job_id=? ORDER BY version DESC", (job_id,)
     ).fetchall()
+    apply_url_row = db.execute(
+        "SELECT apply_url FROM job_apply_urls WHERE job_id=?", (job_id,)
+    ).fetchone()
+    apply_url = apply_url_row["apply_url"] if apply_url_row else ""
     return render_template(
         "job_detail.html",
         job=dict(job),
         notes=[dict(n) for n in notes],
         docs=[dict(d) for d in docs],
+        apply_url=apply_url,
         statuses=STATUSES,
         status_colors=STATUS_COLORS,
     )
+
+
+@app.route("/jobs/<job_id>/apply_url", methods=["POST"])
+def save_apply_url(job_id):
+    url = (request.json or {}).get("url", "").strip()
+    db  = get_db()
+    if url:
+        db.execute(
+            "INSERT OR REPLACE INTO job_apply_urls (job_id, apply_url, saved_at) VALUES (?,?,?)",
+            (job_id, url, datetime.now().isoformat()),
+        )
+    else:
+        db.execute("DELETE FROM job_apply_urls WHERE job_id=?", (job_id,))
+    db.commit()
+    return jsonify({"ok": True})
 
 
 @app.route("/jobs/<job_id>/generate", methods=["POST"])

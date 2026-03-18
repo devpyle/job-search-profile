@@ -12,11 +12,7 @@
         <span class="status-pill" style="background:{{ status_colors.get(job.status,'#94a3b8') }}">
           {{ job.status }}
         </span>
-        <select class="status-select" onchange="moveJob('{{ job.id }}', this.value)">
-          {% for s in statuses %}
-          <option value="{{ s }}" {% if s == job.status %}selected{% endif %}>{{ s }}</option>
-          {% endfor %}
-        </select>
+        <span class="status-hint">Drag the card on the Board to change status</span>
       </div>
     </div>
 
@@ -33,10 +29,38 @@
     <div class="detail-reason">↳ {{ job.reason }}</div>
     {% endif %}
 
-    {% if job.url %}
-    <a href="{{ job.url }}" target="_blank" class="btn btn-outline" style="margin:0.5rem 0 1rem">
-      ↗ View Original Posting
-    </a>
+    <div class="detail-links">
+      {% if job.url %}
+      <a href="{{ job.url }}" target="_blank" class="btn btn-outline">↗ Original Posting</a>
+      {% endif %}
+      {% if apply_url %}
+      <a href="{{ apply_url }}" target="_blank" class="btn btn-primary">↗ Apply Now</a>
+      {% endif %}
+    </div>
+
+    <!-- Application URL -->
+    <div class="apply-url-section">
+      <label class="field-label">Application URL</label>
+      <div class="apply-url-row">
+        <input type="url" id="apply-url-input" class="apply-url-input"
+               placeholder="Paste the direct application link here…"
+               value="{{ apply_url }}">
+        <button class="btn-sm btn-primary" onclick="saveApplyUrl('{{ job.id }}')">Save</button>
+      </div>
+    </div>
+
+    {% if job.status == 'Reviewing' %}
+    <!-- Reviewing checklist -->
+    <div class="review-checklist">
+      <div class="checklist-title">Reviewing checklist</div>
+      <label><input type="checkbox"> Read the full job description</label>
+      <label><input type="checkbox"> Verify remote / location works</label>
+      <label><input type="checkbox"> Check salary range (listed or Glassdoor)</label>
+      <label><input type="checkbox"> Research the company (size, funding, culture)</label>
+      <label><input type="checkbox"> Find the hiring manager on LinkedIn</label>
+      <label><input type="checkbox"> Paste the application URL above</label>
+      <label><input type="checkbox"> Ready to apply → drag card to Drafting</label>
+    </div>
     {% endif %}
 
     {% if job.description %}
@@ -174,6 +198,20 @@ function generateDocs(jobId) {
     btn.disabled    = false;
     btn.textContent = "✨ Generate Resume + Cover Letter";
     status.textContent = "Error: " + e.message;
+  });
+}
+
+function saveApplyUrl(jobId) {
+  const url = document.getElementById("apply-url-input").value.trim();
+  fetch(`/jobs/${jobId}/apply_url`, {
+    method:  "POST",
+    headers: {"Content-Type": "application/json"},
+    body:    JSON.stringify({ url }),
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (d.ok) showToast(url ? "Application URL saved" : "URL cleared");
+    else showToast("Error: " + d.error, true);
   });
 }
 

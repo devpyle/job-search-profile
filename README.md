@@ -1,4 +1,4 @@
-# Claude Code Job Search System
+# Job Radar — AI-Powered Job Search & Application Tracker
 
 A Claude Code-powered job search system that runs automated daily searches across multiple job APIs, emails you results twice a day, and provides a full web dashboard for tracking applications and generating tailored resumes and cover letters.
 

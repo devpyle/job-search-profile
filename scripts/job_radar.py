@@ -970,7 +970,7 @@ def _li_fetch(keywords: str, remote: bool) -> list[Job]:
 def _li_fetch_description(job_url: str) -> str:
     """Fetch full job description from LinkedIn detail endpoint. Returns empty string on failure."""
     from bs4 import BeautifulSoup
-    m = re.search(r"/(\d+)(?:[/?]|$)", job_url)
+    m = re.search(r"(\d{7,})", job_url)  # job ID is 7+ digit number anywhere in URL
     if not m:
         return ""
     job_id = m.group(1)

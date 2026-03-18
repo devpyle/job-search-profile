@@ -143,6 +143,13 @@ job-search-profile/
 - Gmail account with an [App Password](https://myaccount.google.com/apppasswords)
 - (Optional) Telegram bot token for mobile access
 
+**Run the setup script** (handles deps, .env, config.py, docs, and cron for you):
+```bash
+python setup.py
+```
+
+Or set things up manually:
+
 **Install dependencies:**
 ```bash
 pip install flask python-docx anthropic openai google-genai requests beautifulsoup4 python-dotenv markdown

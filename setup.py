@@ -245,16 +245,13 @@ def read_template(name: str) -> str:
         return p.read_text(encoding="utf-8")
     return ""
 
-def generate_profile(resume_text: str, prefs: dict, api_key: str) -> dict[str, str]:
-    """Call Claude to generate all docs/ files from the resume and preferences."""
-    import anthropic
-
+def build_prompt(resume_text: str, prefs: dict) -> str:
     job_template    = read_template("YYYY-YYYY-company-title.md")
     info_template   = read_template("personal-info.md")
     skills_template = read_template("technical-skills.md")
     edu_template    = read_template("education.md")
 
-    prompt = f"""You are setting up a job search profile system. Given a resume and some preferences, generate structured profile documents that will be used to create tailored resumes and cover letters with AI.
+    return f"""You are setting up a job search profile system. Given a resume and some preferences, generate structured profile documents that will be used to create tailored resumes and cover letters with AI.
 
 ## Resume
 {resume_text}
@@ -305,25 +302,42 @@ Important:
 - personal-info.md Summary Blurb should be 2-3 polished sentences suitable for a cover letter opening
 """
 
-    client   = anthropic.Anthropic(api_key=api_key)
-    print()
-    info("Calling Claude to generate your profile documents (this takes ~30s)…")
+def parse_files(response: str) -> dict[str, str]:
+    files = {}
+    for match in re.finditer(r'<file name="([^"]+)">(.*?)</file>', response, re.DOTALL):
+        files[match.group(1).strip()] = match.group(2).strip()
+    return files
 
+def generate_profile(resume_text: str, prefs: dict, api_key: str) -> dict[str, str]:
+    """Generate profile docs via claude -p (Pro/Max subscription) or API fallback."""
+    prompt = build_prompt(resume_text, prefs)
+    print()
+
+    # Prefer claude -p — uses the user's Pro/Max subscription, better model, no API cost
+    if shutil.which("claude"):
+        info("Generating profile documents via Claude Code (claude -p)…")
+        result = subprocess.run(
+            ["claude", "-p", prompt],
+            capture_output=True, text=True, timeout=180,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return parse_files(result.stdout)
+        warn(f"claude -p failed ({result.stderr[:200].strip()}) — falling back to API…")
+
+    # Fallback: Anthropic API
+    if not api_key:
+        err("No ANTHROPIC_API_KEY found and Claude Code is not available.")
+        return {}
+
+    info("Generating profile documents via Anthropic API (claude-sonnet-4-6)…")
+    import anthropic
+    client  = anthropic.Anthropic(api_key=api_key)
     message = client.messages.create(
-        model="claude-haiku-4-5-20251001",
+        model="claude-sonnet-4-6",
         max_tokens=8000,
         messages=[{"role": "user", "content": prompt}],
     )
-    response = message.content[0].text
-
-    # Parse <file name="...">...</file> blocks
-    files = {}
-    for match in re.finditer(r'<file name="([^"]+)">(.*?)</file>', response, re.DOTALL):
-        filename = match.group(1).strip()
-        content  = match.group(2).strip()
-        files[filename] = content
-
-    return files
+    return parse_files(message.content[0].text)
 
 def write_profile_files(files: dict[str, str]) -> list[str]:
     """Write generated files to docs/ and return list of job doc filenames."""

@@ -28,7 +28,7 @@ Built and maintained using [Claude Code](https://claude.ai/code). Released under
 - Filters out wrong titles, non-US locations, onsite/hybrid roles outside your area, staffing agencies, closed listings, broken URLs, salary below floor, and aggregate/category pages
 - Broad title targeting: PO, PM, BA, systems/functional/solutions/integration analyst, scrum master, agile delivery, platform/service/feature owner, pre-sales engineer, customer success (technical/enterprise), and more
 - Rates each job with Claude Haiku — `Apply Now / Worth a Look / Weak Match / Skip` — with a one-sentence reason
-- Within each tier, local Triangle-area companies sort to the top — even for remote roles, proximity to the company is an advantage
+- Within each tier, companies local to your configured metro area sort to the top — even for remote roles, proximity to the company is an advantage
 - Saves a dated markdown report to `output/job-radar/` with each tier in its own section
 - Emails the full report in the email body and attaches the `.md` file
 

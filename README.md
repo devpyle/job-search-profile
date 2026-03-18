@@ -6,28 +6,50 @@ Built and maintained using [Claude Code](https://claude.ai/code).
 
 ---
 
+## Screenshots
+
+**Kanban Board** — drag jobs through columns as you work them
+![Board](screenshots/board.png)
+
+**Job Radar** — tier-coded cards (green = Apply Now · blue = Worth a Look · gray = Skip)
+![Radar](screenshots/radar_tiers.png)
+
+**Job Detail** — reviewing checklist, application URL field, and document generation
+![Job Detail](screenshots/job_detail.png)
+
+---
+
 ## What It Does
 
 **Automated Job Radar**
 - Queries Adzuna, Brave Search, Tavily, LinkedIn, Remotive, WeWorkRemotely, Himalayas, RemoteOK, Jobicy, JSearch, Greenhouse, Lever, and Ashby ATS twice a day (9am and 4pm via cron)
+- LinkedIn scraping uses full filter params (full-time, newest first, remote+hybrid), fetches up to 2 pages per query with randomized delays, and retrieves full job descriptions for every job that passes pre-filtering — so Claude rates on real content, not just title
 - Deduplicates results across runs using multi-key dedup (company+title and URL) so you only see new postings
 - Filters out wrong titles, non-US locations, onsite/hybrid roles outside your area, staffing agencies, closed listings, broken URLs, salary below floor, and aggregate/category pages
+- Broad title targeting: PO, PM, BA, systems/functional/solutions/integration analyst, scrum master, agile delivery, platform/service/feature owner, pre-sales engineer, customer success (technical/enterprise), and more
 - Rates each job with Claude Haiku — `Apply Now / Worth a Look / Weak Match / Skip` — with a one-sentence reason
-- Saves a dated markdown report to `output/job-radar/`
+- Within each tier, local Triangle-area companies sort to the top — even for remote roles, proximity to the company is an advantage
+- Saves a dated markdown report to `output/job-radar/` with each tier in its own section
 - Emails the full report in the email body and attaches the `.md` file
 
 **Web Dashboard** (`scripts/dashboard.py`)
-- Local Flask app — run it on your always-on machine, open at `http://localhost:5000`
+- Local Flask app — neon dark UI, run it on your always-on machine, open at `http://localhost:5000`
 - **Kanban board** — drag jobs through: New → Reviewing → Drafting → Ready → Applied → Phone Screen → Interview → Offer → Accepted / Rejected / Passed
+  - Status is drag-only — no dropdowns to accidentally click
+  - Reviewing cards show a checklist badge (☑) as a reminder to work through the checklist before moving on
 - **Radar view** — browse reports in-browser, save jobs to the board with one click
+  - Job cards have a color-coded right-border stripe: green = Apply Now, blue = Worth a Look, yellow = Weak Match, gray = Skip
+  - Posting button is electric blue to distinguish it from the green Save button
   - Comment box on every card to note why a job isn't a fit or flag search tweaks
   - Dismiss jobs you've reviewed — stays hidden on future visits, toggle to show dismissed
   - Mark entire reports as reviewed — ✓ appears in the report dropdown
-- **Job detail** — full description, timestamped notes, status changes
+- **Job detail** — full description, timestamped notes, application URL field
+  - Reviewing checklist: 7-step checklist (read JD, verify remote, check salary, research company, find hiring manager, paste apply URL, drag to Drafting) appears when card is in Reviewing
+  - Paste and save a direct application URL — shows as a separate Apply Now button at the top
 - **Document generation** — generates tailored resume + cover letter via Claude (uses your Pro subscription via `claude -p`, no API cost)
 - **Two-panel editor** — edit resume and cover letter side by side, regenerate with custom instructions, version history, mark final
 - **DOCX export** — download resume or cover letter as a Word file
-- **SQLite database** — all jobs, notes, documents, comments, and dismissed state persist locally
+- **SQLite database** — all jobs, notes, documents, comments, dismissed state, and application URLs persist locally
 
 **Telegram Bot** (`scripts/telegram_bot.py`, optional)
 - `/radar` — trigger a job search from your phone
@@ -92,11 +114,18 @@ job-search-profile/
 
 **Working a saved job:**
 1. Go to **Board** — saved jobs land in the New column
-2. Drag the card to **Reviewing** as you look it over
-3. When ready to apply, click **View** → **Generate Resume + Cover Letter**
-4. Edit in the two-panel editor, add regeneration instructions if needed
-5. Download DOCX, **Mark Final**, card moves to Ready
-6. Move through Applied → Phone Screen → Interview → Offer as you progress
+2. Drag the card to **Reviewing** — a checklist (☑) badge appears as a reminder
+3. Click **View** and work through the Reviewing checklist:
+   - Read the full job description
+   - Verify remote / location works
+   - Check salary range (listed or Glassdoor)
+   - Research the company (size, funding, culture)
+   - Find the hiring manager on LinkedIn
+   - Paste the application URL into the field and save
+4. Drag the card to **Drafting**, then click **View** → **Generate Resume + Cover Letter**
+5. Edit in the two-panel editor, add regeneration instructions if needed
+6. Download DOCX, **Mark Final** — drag card to **Ready**
+7. Move through Applied → Phone Screen → Interview → Offer as you progress
 
 **To generate a resume without the dashboard:**
 1. Save the job description to `input/job-postings/company-title.txt`

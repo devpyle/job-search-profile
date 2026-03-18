@@ -97,7 +97,7 @@ main { padding: 1.5rem; }
 .btn:hover { opacity: 0.88; }
 .btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
-.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary { background: var(--accent); color: #0D0D0D; }
 .btn-primary:hover { background: var(--yellow); color: #0D0D0D; opacity: 1; }
 
 .btn-outline {

@@ -183,8 +183,7 @@ _EXPIRED_RE = re.compile(
 )
 
 _WRONG_TITLE_RE = re.compile(
-    r"^associate product (manager|owner)\b"      # junior level
-    r"|^head of product\b"                       # usually people management
+    r"^head of product\b"                        # usually people management
     r"|\bdata analyst\b"                         # wrong function
     r"|\b(sales|marketing) (manager|director|executive|rep|consultant|account)\b"
     r"|\bcustomer (service|success|care) (rep|representative|specialist|associate|coordinator|manager|operations)\b"
@@ -1459,10 +1458,11 @@ def search_ats_companies() -> list[Job]:
 
     TARGET_TITLES = [
         "product owner", "product manager", "platform product",
-        "scrum master", "business analyst",
+        "scrum master", "business analyst", "functional analyst",
+        "business functional analyst", "systems analyst",
         "avp product", "director of product", "principal product",
     ]
-    BLOCK_SUFFIXES = ["associate", "representative", "specialist", "rep",
+    BLOCK_SUFFIXES = ["representative", "specialist", "rep",
                       "support agent", "support rep"]
 
     jobs: list[Job] = []

@@ -4,9 +4,19 @@
 __pycache__/
 *.pyc
 dashboard/data/*.db
-output/*.zip
-input/*.zip
 output/documents/
 output/job-radar/debug_job_log.txt
+output/job-radar/*.md
+output/job-radar/*.json
+output/resumes/
+output/cover-letters/
+output/*.md
+# Input personal files
+input/old-resumes/
+input/*.zip
+input/job-postings/
+input/raw-notes/
+# Zips
+*.zip
 # Personal profile docs — keep local only, templates are in docs/templates/
 docs/*.md

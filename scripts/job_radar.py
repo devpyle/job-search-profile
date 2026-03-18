@@ -36,7 +36,7 @@ TAVILY_API_KEY    = os.environ["TAVILY_API_KEY"]
 ANTHROPIC_API_KEY = os.environ["ANTHROPIC_API_KEY"]
 GMAIL_APP_PW      = os.environ["GMAIL_APP_PW"]
 JSEARCH_API_KEY   = os.environ.get("JSEARCH_API_KEY", "")
-EMAIL = "your@email.com"
+EMAIL = os.environ.get("GMAIL_TO", os.environ.get("GMAIL_FROM", ""))
 
 claude = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
@@ -598,11 +598,11 @@ def extract_salary_from_text(text: str) -> Optional[str]:
 # ── CLAUDE RATING ─────────────────────────────────────────────────────────────
 
 RATING_PROMPT = """\
-You are a job-fit rater for Your Name, a Product Owner specializing in API platforms and middleware.
+You are a job-fit rater for a Product Owner specializing in API platforms and middleware.
 
-David's background:
-- Current role: Middleware PO at Jenius Bank (SMBC) — API platform strategy in regulated fintech
-- Prior: Broadridge PO/Scrum Master (2021-2024), First Citizens Bank BA (2019-2021), Deutsche Bank BA (2011-2019)
+Candidate background:
+- Current role: Middleware PO at a digital bank — API platform strategy in regulated fintech
+- Prior: PO/Scrum Master at a financial services firm (2021-2024), Business Analyst at two banks (2011-2021)
 - Target roles: Product Owner, API Product Manager, Platform Product Manager
 - Industries: fintech, banking, healthcare, SaaS, enterprise software, platform/infrastructure
 - Location: Raleigh NC — remote preferred, open to hybrid. **US-only** — international roles (outside the US) are out of scope even if remote.

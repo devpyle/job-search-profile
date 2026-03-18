@@ -99,8 +99,8 @@ def save_state(state: dict):
 
 def build_system_prompt() -> str:
     sections = [
-        "You are a job search assistant for Your Name. "
-        "You have full context of his career profile, target roles, and active job search. "
+        "You are a job search assistant. "
+        "You have full context of the user's career profile, target roles, and active job search. "
         "Be direct, concise, and practical. No fluff.\n"
     ]
     for filename in ["personal-info.md", "technical-skills.md", "resume-generation-rules.md"]:

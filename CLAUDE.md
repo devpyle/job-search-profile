@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Repository Is
 
-A structured job search profile for **Your Name** — a Product Owner specializing in API platforms and middleware. The `docs/` folder is a personal "source of truth" used to generate resumes, cover letters, LinkedIn summaries, and other application artifacts on demand. There is no build system, test runner, or CI pipeline.
+A structured job search profile — the `docs/` folder is a personal "source of truth" used to generate resumes, cover letters, LinkedIn summaries, and other application artifacts on demand. There is no build system, test runner, or CI pipeline.
 
 ## File Structure & Conventions
 
@@ -26,13 +26,9 @@ Each job file contains these sections (used selectively when generating artifact
 - **Signature story** — STAR format for interviews or cover letters
 - **Technical skills used** — role-specific tools/technologies
 
-## Key Facts About David
+## Key Facts (populate from your docs)
 
-- **Target roles:** Product Owner, API Product Manager, Platform Product Manager
-- **Industries open to:** fintech, banking, healthcare, SaaS, enterprise software, platform/infrastructure
-- **Location:** Raleigh, NC — remote preferred, open to hybrid
-- **Career arc:** Deutsche Bank BA (2011–2019) → First Citizens Bank BA (2019–2021) → Broadridge PO/SM (2021–2024) → Jenius Bank (SMBC) Middleware PO (2024–present)
-- **Core differentiator:** API platform strategy + platform modernization in regulated environments
+These come from your `docs/personal-info.md` and job files — not hardcoded here. See `docs/templates/` for the expected structure.
 
 ## Resume and Cover Letter Generation
 
@@ -55,6 +51,6 @@ New job entries should follow the existing frontmatter schema (`type`, `company`
 
 Staging area for raw materials — nothing here goes into output directly. Three subfolders:
 
-- **`input/job-postings/`** — job descriptions for roles David is targeting. Read these to tailor resumes and cover letters: extract required skills, keywords, and role framing to match against `docs/`.
+- **`input/job-postings/`** — job descriptions for roles you are targeting. Read these to tailor resumes and cover letters: extract required skills, keywords, and role framing to match against `docs/`.
 - **`input/old-resumes/`** — previous resume files. Mine these for achievements, metrics, or role details not yet captured in `docs/` and backfill into the appropriate job markdown files.
 - **`input/raw-notes/`** — informal notes about past roles. Treat as unstructured input to be cleaned up and merged into the relevant `docs/` job files using the standard section format.

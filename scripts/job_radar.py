@@ -939,7 +939,6 @@ def _li_fetch(keywords: str, remote: bool) -> list[Job]:
         "keywords": keywords,
         "geoId":    "103644278",   # United States
         "f_TPR":    "r604800",     # last 7 days
-        "f_E":      "4,5",         # mid-senior level + director
         "f_JT":     "F",           # full-time only
         "sortBy":   "DD",          # newest first
     }

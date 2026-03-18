@@ -44,12 +44,13 @@ Built and maintained using [Claude Code](https://claude.ai/code).
 job-search-profile/
 ├── CLAUDE.md                          # Claude Code instructions
 ├── .env                               # API keys (never commit)
-├── docs/
+├── docs/                              # personal profile docs — local only, not in git
 │   ├── personal-info.md               # contact, headline, summary
 │   ├── technical-skills.md            # master skills list
 │   ├── education.md                   # degrees and formatting
 │   ├── resume-generation-rules.md     # rules Claude follows for resume/cover letter work
-│   └── YYYY-YYYY-company-title.md     # one file per role
+│   ├── YYYY-YYYY-company-title.md     # one file per role
+│   └── templates/                     # starter templates for each doc type
 ├── input/
 │   ├── job-postings/                  # drop JDs here before generating a resume
 │   ├── old-resumes/                   # source material for backfilling docs
@@ -134,4 +135,4 @@ python scripts/dashboard.py
 - Add domains to `DOMAIN_COMPANY_MAP` for better company name extraction from Workday/ATS URLs
 
 **Profile docs:**
-Most setup time is writing your `docs/` files. Once those are solid, Claude can generate a tailored resume in under 2 minutes. A full setup guide is in [`output/job-search-system-setup-guide.md`](output/job-search-system-setup-guide.md).
+Most setup time is writing your `docs/` files. Template files showing the expected structure for each doc type are in `docs/templates/`. Once those are solid, Claude can generate a tailored resume in under 2 minutes.

@@ -1751,7 +1751,7 @@ def build_report(jobs: list[Job], seen: dict, now: datetime) -> tuple[str, list[
         # A job is "local" if its location field contains any RTP-area term,
         # even if the role is posted as remote or hybrid.
         loc = j.location.lower()
-        is_local = any(term in loc for term in HOME_METRO_TERMS) or ", nc" in loc
+        is_local = any(term in loc for term in HOME_METRO_TERMS) or f", {HOME_STATE.lower()}" in loc
         return (TIER_ORDER.get(j.tier, 99), 0 if is_local else 1)
 
     new_jobs.sort(key=_sort_key)

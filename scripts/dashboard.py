@@ -51,11 +51,13 @@ from config import CANDIDATE_NAME, JOB_DOCS  # noqa: E402
 
 STATUSES = [
     "New", "Reviewing", "Drafting", "Ready",
-    "Applied", "Phone Screen", "Interview", "Offer",
+    "Applied", "Interviewing", "Offer",
     "Accepted", "Rejected", "Passed",
 ]
-ACTIVE_STATUSES = STATUSES[:8]
-END_STATUSES    = STATUSES[8:]
+APP_STATUSES       = ["New", "Reviewing", "Drafting", "Ready", "Applied"]
+INTERVIEW_STATUSES = ["Interviewing", "Offer"]
+END_STATUSES       = ["Accepted", "Rejected", "Passed"]
+ACTIVE_STATUSES    = APP_STATUSES  # kept for any legacy references
 
 STATUS_COLORS = {
     "New":          "#94a3b8",
@@ -63,8 +65,7 @@ STATUS_COLORS = {
     "Drafting":     "#8b5cf6",
     "Ready":        "#10b981",
     "Applied":      "#06b6d4",
-    "Phone Screen": "#f97316",
-    "Interview":    "#eab308",
+    "Interviewing": "#f97316",
     "Offer":        "#84cc16",
     "Accepted":     "#22c55e",
     "Rejected":     "#ef4444",
@@ -158,7 +159,43 @@ def init_db():
             is_final          INTEGER NOT NULL DEFAULT 0,
             FOREIGN KEY (job_id) REFERENCES jobs(id)
         );
+
+        CREATE TABLE IF NOT EXISTS interview_contacts (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            job_id     TEXT NOT NULL,
+            role       TEXT NOT NULL,
+            name       TEXT NOT NULL,
+            title      TEXT,
+            email      TEXT,
+            linkedin   TEXT,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS interview_rounds (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            job_id       TEXT NOT NULL,
+            round_num    INTEGER NOT NULL DEFAULT 1,
+            date         TEXT,
+            format       TEXT,
+            interviewers TEXT,
+            notes        TEXT,
+            thank_you    INTEGER NOT NULL DEFAULT 0,
+            created_at   TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS offer_details (
+            job_id    TEXT PRIMARY KEY,
+            base      TEXT,
+            bonus     TEXT,
+            equity    TEXT,
+            benefits  TEXT,
+            deadline  TEXT,
+            notes     TEXT,
+            updated_at TEXT NOT NULL
+        );
     """)
+    # Migrate old status names
+    db.execute("UPDATE jobs SET status='Interviewing' WHERE status IN ('Phone Screen','Interview')")
     db.commit()
     db.close()
 
@@ -540,9 +577,40 @@ def board():
     return render_template(
         "board.html",
         jobs_by_status=jobs_by_status,
-        active_statuses=ACTIVE_STATUSES,
+        app_statuses=APP_STATUSES,
         end_statuses=END_STATUSES,
         statuses=STATUSES,
+        status_colors=STATUS_COLORS,
+    )
+
+
+@app.route("/interviews")
+def interviews():
+    db   = get_db()
+    rows = db.execute("""
+        SELECT j.*,
+               COUNT(DISTINCT ir.id) AS round_count,
+               MAX(ir.date)          AS latest_round_date
+        FROM   jobs j
+        LEFT JOIN interview_rounds ir ON ir.job_id = j.id
+        WHERE  j.status IN ('Interviewing','Offer')
+        GROUP BY j.id
+        ORDER BY j.saved_at DESC
+    """).fetchall()
+
+    jobs = []
+    for row in rows:
+        job = dict(row)
+        rec = db.execute(
+            "SELECT name FROM interview_contacts WHERE job_id=? AND role='recruiter' LIMIT 1",
+            (job["id"],)
+        ).fetchone()
+        job["recruiter_name"] = rec["name"] if rec else None
+        jobs.append(job)
+
+    return render_template(
+        "interviews.html",
+        jobs=jobs,
         status_colors=STATUS_COLORS,
     )
 
@@ -708,12 +776,30 @@ def job_detail(job_id):
         "SELECT apply_url FROM job_apply_urls WHERE job_id=?", (job_id,)
     ).fetchone()
     apply_url = apply_url_row["apply_url"] if apply_url_row else ""
+
+    contacts = offer = rounds = None
+    if dict(job)["status"] in ("Interviewing", "Offer"):
+        contacts = [dict(r) for r in db.execute(
+            "SELECT * FROM interview_contacts WHERE job_id=? ORDER BY created_at", (job_id,)
+        ).fetchall()]
+        rounds = [dict(r) for r in db.execute(
+            "SELECT * FROM interview_rounds WHERE job_id=? ORDER BY round_num", (job_id,)
+        ).fetchall()]
+    if dict(job)["status"] == "Offer":
+        offer_row = db.execute(
+            "SELECT * FROM offer_details WHERE job_id=?", (job_id,)
+        ).fetchone()
+        offer = dict(offer_row) if offer_row else {}
+
     return render_template(
         "job_detail.html",
         job=dict(job),
         notes=[dict(n) for n in notes],
         docs=[dict(d) for d in docs],
         apply_url=apply_url,
+        contacts=contacts,
+        rounds=rounds,
+        offer=offer,
         statuses=STATUSES,
         status_colors=STATUS_COLORS,
     )
@@ -730,6 +816,85 @@ def save_apply_url(job_id):
         )
     else:
         db.execute("DELETE FROM job_apply_urls WHERE job_id=?", (job_id,))
+    db.commit()
+    return jsonify({"ok": True})
+
+
+@app.route("/jobs/<job_id>/contacts", methods=["POST"])
+def add_contact(job_id):
+    data = request.json or {}
+    name = data.get("name", "").strip()
+    if not name:
+        return jsonify({"ok": False, "error": "name required"}), 400
+    db = get_db()
+    db.execute(
+        "INSERT INTO interview_contacts (job_id,role,name,title,email,linkedin,created_at) VALUES (?,?,?,?,?,?,?)",
+        (job_id, data.get("role","interviewer"), name,
+         data.get("title",""), data.get("email",""), data.get("linkedin",""),
+         datetime.now().isoformat()),
+    )
+    db.commit()
+    new_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+    return jsonify({"ok": True, "id": new_id})
+
+
+@app.route("/jobs/<job_id>/contacts/<int:contact_id>", methods=["DELETE"])
+def delete_contact(job_id, contact_id):
+    db = get_db()
+    db.execute("DELETE FROM interview_contacts WHERE id=? AND job_id=?", (contact_id, job_id))
+    db.commit()
+    return jsonify({"ok": True})
+
+
+@app.route("/jobs/<job_id>/rounds", methods=["POST"])
+def add_round(job_id):
+    data = request.json or {}
+    db   = get_db()
+    count = db.execute(
+        "SELECT COUNT(*) FROM interview_rounds WHERE job_id=?", (job_id,)
+    ).fetchone()[0]
+    db.execute(
+        "INSERT INTO interview_rounds (job_id,round_num,date,format,interviewers,notes,thank_you,created_at) VALUES (?,?,?,?,?,?,?,?)",
+        (job_id, count + 1, data.get("date",""), data.get("format",""),
+         data.get("interviewers",""), data.get("notes",""),
+         1 if data.get("thank_you") else 0, datetime.now().isoformat()),
+    )
+    db.commit()
+    return jsonify({"ok": True})
+
+
+@app.route("/jobs/<job_id>/rounds/<int:round_id>", methods=["POST"])
+def update_round(job_id, round_id):
+    data = request.json or {}
+    db   = get_db()
+    db.execute(
+        "UPDATE interview_rounds SET date=?,format=?,interviewers=?,notes=?,thank_you=? WHERE id=? AND job_id=?",
+        (data.get("date",""), data.get("format",""), data.get("interviewers",""),
+         data.get("notes",""), 1 if data.get("thank_you") else 0,
+         round_id, job_id),
+    )
+    db.commit()
+    return jsonify({"ok": True})
+
+
+@app.route("/jobs/<job_id>/rounds/<int:round_id>", methods=["DELETE"])
+def delete_round(job_id, round_id):
+    db = get_db()
+    db.execute("DELETE FROM interview_rounds WHERE id=? AND job_id=?", (round_id, job_id))
+    db.commit()
+    return jsonify({"ok": True})
+
+
+@app.route("/jobs/<job_id>/offer", methods=["POST"])
+def save_offer(job_id):
+    data = request.json or {}
+    db   = get_db()
+    db.execute(
+        "INSERT OR REPLACE INTO offer_details (job_id,base,bonus,equity,benefits,deadline,notes,updated_at) VALUES (?,?,?,?,?,?,?,?)",
+        (job_id, data.get("base",""), data.get("bonus",""), data.get("equity",""),
+         data.get("benefits",""), data.get("deadline",""), data.get("notes",""),
+         datetime.now().isoformat()),
+    )
     db.commit()
     return jsonify({"ok": True})
 

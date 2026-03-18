@@ -3,10 +3,13 @@
 
 {% block content %}
 <div class="board-header">
-  <h2>Application Board</h2>
+  <div class="board-toggle">
+    <a href="{{ url_for('board') }}" class="board-toggle-btn active">Applications</a>
+    <a href="{{ url_for('interviews') }}" class="board-toggle-btn">Interviews</a>
+  </div>
   <div class="board-counts">
     {% set total = namespace(n=0) %}
-    {% for s in active_statuses %}{% set total.n = total.n + jobs_by_status[s]|length %}{% endfor %}
+    {% for s in app_statuses %}{% set total.n = total.n + jobs_by_status[s]|length %}{% endfor %}
     {{ total.n }} active
   </div>
 </div>
@@ -14,7 +17,7 @@
 <!-- Active columns -->
 <div class="kanban-wrap">
   <div class="kanban-board" id="kanban-board">
-    {% for status in active_statuses %}
+    {% for status in app_statuses %}
     <div class="kanban-col" data-status="{{ status }}">
       <div class="col-header" style="border-top: 3px solid {{ status_colors[status] }}">
         <span class="col-title">{{ status }}</span>
@@ -53,13 +56,6 @@
     {% endfor %}
   </div>
 </div>
-
-<!-- Job detail modal -->
-<div class="modal-overlay hidden" id="modal-overlay" onclick="closeModal(event)">
-  <div class="modal-box" id="modal-box">
-    <div id="modal-content">Loading…</div>
-  </div>
-</div>
 {% endblock %}
 
 {% block scripts %}
@@ -67,7 +63,6 @@
 const STATUS_COLORS = {{ status_colors | tojson }};
 const ALL_STATUSES  = {{ statuses | tojson }};
 
-// Init SortableJS on every column
 document.querySelectorAll(".sortable-list").forEach(el => {
   Sortable.create(el, {
     group:     "jobs",
@@ -84,13 +79,7 @@ document.querySelectorAll(".sortable-list").forEach(el => {
       .then(r => r.json())
       .then(d => {
         if (!d.ok) { alert("Move failed: " + d.error); location.reload(); }
-        else {
-          // Update badge counts
-          updateBadges();
-          // Update card status bar color
-          const bar = evt.item.querySelector(".status-bar");
-          if (bar) bar.style.background = STATUS_COLORS[status] || "#ccc";
-        }
+        else { updateBadges(); }
       });
     }
   });
@@ -98,9 +87,8 @@ document.querySelectorAll(".sortable-list").forEach(el => {
 
 function updateBadges() {
   document.querySelectorAll(".kanban-col").forEach(col => {
-    const status = col.dataset.status;
-    const count  = col.querySelectorAll(".job-card").length;
-    const badge  = col.querySelector(".col-badge");
+    const count = col.querySelectorAll(".job-card").length;
+    const badge = col.querySelector(".col-badge");
     if (badge) badge.textContent = count;
   });
 }
@@ -113,20 +101,20 @@ function toggleEndStates(btn) {
     : "▼ Hide closed";
 }
 
-function openJobModal(jobId) {
-  const overlay = document.getElementById("modal-overlay");
-  const content = document.getElementById("modal-content");
-  overlay.classList.remove("hidden");
-  content.innerHTML = "<p style='padding:2rem;text-align:center'>Loading…</p>";
-  fetch(`/jobs/${jobId}?modal=1`)
-    .then(r => r.text())
-    .then(html => { content.innerHTML = html; });
-}
-
-function closeModal(evt) {
-  if (evt.target.id === "modal-overlay") {
-    document.getElementById("modal-overlay").classList.add("hidden");
-  }
+function moveToInterviews(jobId) {
+  fetch(`/jobs/${jobId}/move`, {
+    method:  "POST",
+    headers: {"Content-Type": "application/json"},
+    body:    JSON.stringify({ status: "Interviewing" }),
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (d.ok) {
+      const card = document.querySelector(`[data-job-id="${jobId}"]`);
+      if (card) card.remove();
+      updateBadges();
+    }
+  });
 }
 </script>
 {% endblock %}

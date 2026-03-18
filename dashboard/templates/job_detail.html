@@ -49,6 +49,105 @@
       </div>
     </div>
 
+    {% if job.status in ('Interviewing', 'Offer') %}
+    <!-- Interview Tracker -->
+    <div class="interview-tracker">
+
+      <!-- Contacts -->
+      <div class="tracker-section">
+        <div class="tracker-title">People</div>
+        <div id="contacts-list">
+          {% for c in contacts %}
+          <div class="contact-row" id="contact-{{ c.id }}">
+            <span class="contact-role-badge">{{ c.role }}</span>
+            <span class="contact-name">{{ c.name }}</span>
+            {% if c.title %}<span class="contact-meta">{{ c.title }}</span>{% endif %}
+            {% if c.email %}<a href="mailto:{{ c.email }}" class="contact-link">{{ c.email }}</a>{% endif %}
+            {% if c.linkedin %}<a href="{{ c.linkedin }}" target="_blank" class="contact-link">LinkedIn</a>{% endif %}
+            <button class="btn-icon" onclick="deleteContact('{{ job.id }}', {{ c.id }})">✕</button>
+          </div>
+          {% else %}
+          <div class="empty-state" id="no-contacts">No contacts added yet.</div>
+          {% endfor %}
+        </div>
+        <div class="add-contact-form">
+          <select id="contact-role" class="input-sm">
+            <option value="recruiter">Recruiter</option>
+            <option value="hiring_manager">Hiring Manager</option>
+            <option value="interviewer">Interviewer</option>
+          </select>
+          <input type="text" id="contact-name" class="input-sm" placeholder="Name">
+          <input type="text" id="contact-title" class="input-sm" placeholder="Title (optional)">
+          <input type="text" id="contact-email" class="input-sm" placeholder="Email (optional)">
+          <input type="text" id="contact-linkedin" class="input-sm" placeholder="LinkedIn URL (optional)">
+          <button class="btn-sm btn-primary" onclick="addContact('{{ job.id }}')">Add</button>
+        </div>
+      </div>
+
+      <!-- Interview Rounds -->
+      <div class="tracker-section">
+        <div class="tracker-title">Interview Rounds</div>
+        <div id="rounds-list">
+          {% for r in rounds %}
+          <div class="round-row" id="round-{{ r.id }}">
+            <div class="round-header">
+              <span class="round-num">Round {{ r.round_num }}</span>
+              {% if r.date %}<span class="round-date">{{ r.date[:10] }}</span>{% endif %}
+              {% if r.format %}<span class="round-format">{{ r.format }}</span>{% endif %}
+              {% if r.thank_you %}<span class="thank-you-badge">✓ Thank you sent</span>{% endif %}
+              <button class="btn-icon" onclick="deleteRound('{{ job.id }}', {{ r.id }})">✕</button>
+            </div>
+            {% if r.interviewers %}<div class="round-meta">With: {{ r.interviewers }}</div>{% endif %}
+            {% if r.notes %}<div class="round-notes">{{ r.notes }}</div>{% endif %}
+          </div>
+          {% else %}
+          <div class="empty-state" id="no-rounds">No rounds logged yet.</div>
+          {% endfor %}
+        </div>
+        <div class="add-round-form">
+          <input type="date" id="round-date" class="input-sm">
+          <select id="round-format" class="input-sm">
+            <option value="">Format…</option>
+            <option value="Video">Video</option>
+            <option value="Phone">Phone</option>
+            <option value="Panel">Panel</option>
+            <option value="Take-home">Take-home</option>
+            <option value="Onsite">Onsite</option>
+          </select>
+          <input type="text" id="round-interviewers" class="input-sm" placeholder="Interviewer(s)">
+          <textarea id="round-notes" class="input-sm" rows="2" placeholder="Notes, topics covered, how it went…"></textarea>
+          <label class="checkbox-label">
+            <input type="checkbox" id="round-thankyou"> Thank you note sent
+          </label>
+          <button class="btn-sm btn-primary" onclick="addRound('{{ job.id }}')">Log Round</button>
+        </div>
+      </div>
+
+      {% if job.status == 'Offer' %}
+      <!-- Offer Details -->
+      <div class="tracker-section offer-section">
+        <div class="tracker-title">Offer Details</div>
+        <div class="offer-fields">
+          <label class="field-label">Base Salary</label>
+          <input type="text" id="offer-base" class="apply-url-input" placeholder="e.g. $140,000" value="{{ offer.base if offer else '' }}">
+          <label class="field-label">Bonus</label>
+          <input type="text" id="offer-bonus" class="apply-url-input" placeholder="e.g. 15% target" value="{{ offer.bonus if offer else '' }}">
+          <label class="field-label">Equity</label>
+          <input type="text" id="offer-equity" class="apply-url-input" placeholder="e.g. $50K RSU over 4 years" value="{{ offer.equity if offer else '' }}">
+          <label class="field-label">Benefits notes</label>
+          <input type="text" id="offer-benefits" class="apply-url-input" placeholder="Health, 401k match, PTO…" value="{{ offer.benefits if offer else '' }}">
+          <label class="field-label">Decision deadline</label>
+          <input type="date" id="offer-deadline" class="apply-url-input" value="{{ offer.deadline if offer else '' }}">
+          <label class="field-label">Negotiation notes</label>
+          <textarea id="offer-notes" class="gen-instructions" rows="3" placeholder="Counter offers, leverage, notes…">{{ offer.notes if offer else '' }}</textarea>
+          <button class="btn btn-primary" onclick="saveOffer('{{ job.id }}')">Save Offer Details</button>
+        </div>
+      </div>
+      {% endif %}
+
+    </div>
+    {% endif %}
+
     {% if job.status == 'Reviewing' %}
     <!-- Reviewing checklist -->
     <div class="review-checklist">
@@ -223,6 +322,88 @@ function deleteJob(jobId) {
       if (d.ok) location.href = "/";
       else showToast("Error: " + d.error, true);
     });
+}
+
+function addContact(jobId) {
+  const role     = document.getElementById("contact-role").value;
+  const name     = document.getElementById("contact-name").value.trim();
+  const title    = document.getElementById("contact-title").value.trim();
+  const email    = document.getElementById("contact-email").value.trim();
+  const linkedin = document.getElementById("contact-linkedin").value.trim();
+  if (!name) return;
+  fetch(`/jobs/${jobId}/contacts`, {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ role, name, title, email, linkedin }),
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (!d.ok) { showToast("Error: " + d.error, true); return; }
+    document.getElementById("no-contacts")?.remove();
+    const div = document.createElement("div");
+    div.className = "contact-row"; div.id = `contact-${d.id}`;
+    const linkedinHtml = linkedin ? `<a href="${linkedin}" target="_blank" class="contact-link">LinkedIn</a>` : '';
+    const emailHtml    = email    ? `<a href="mailto:${email}" class="contact-link">${email}</a>` : '';
+    div.innerHTML = `<span class="contact-role-badge">${role}</span><span class="contact-name">${name}</span>${title ? `<span class="contact-meta">${title}</span>` : ''}${emailHtml}${linkedinHtml}<button class="btn-icon" onclick="deleteContact('${jobId}', ${d.id})">✕</button>`;
+    document.getElementById("contacts-list").appendChild(div);
+    ["contact-name","contact-title","contact-email","contact-linkedin"].forEach(id => document.getElementById(id).value = "");
+    showToast("Contact added");
+  });
+}
+
+function deleteContact(jobId, contactId) {
+  fetch(`/jobs/${jobId}/contacts/${contactId}`, { method: "DELETE" })
+  .then(r => r.json())
+  .then(d => {
+    if (d.ok) document.getElementById(`contact-${contactId}`)?.remove();
+    else showToast("Error: " + d.error, true);
+  });
+}
+
+function addRound(jobId) {
+  const date         = document.getElementById("round-date").value;
+  const format       = document.getElementById("round-format").value;
+  const interviewers = document.getElementById("round-interviewers").value.trim();
+  const notes        = document.getElementById("round-notes").value.trim();
+  const thank_you    = document.getElementById("round-thankyou").checked;
+  fetch(`/jobs/${jobId}/rounds`, {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ date, format, interviewers, notes, thank_you }),
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (d.ok) { showToast("Round logged"); setTimeout(() => location.reload(), 800); }
+    else showToast("Error: " + d.error, true);
+  });
+}
+
+function deleteRound(jobId, roundId) {
+  if (!confirm("Remove this round?")) return;
+  fetch(`/jobs/${jobId}/rounds/${roundId}`, { method: "DELETE" })
+  .then(r => r.json())
+  .then(d => {
+    if (d.ok) document.getElementById(`round-${roundId}`)?.remove();
+    else showToast("Error: " + d.error, true);
+  });
+}
+
+function saveOffer(jobId) {
+  const data = {
+    base:     document.getElementById("offer-base")?.value.trim(),
+    bonus:    document.getElementById("offer-bonus")?.value.trim(),
+    equity:   document.getElementById("offer-equity")?.value.trim(),
+    benefits: document.getElementById("offer-benefits")?.value.trim(),
+    deadline: document.getElementById("offer-deadline")?.value,
+    notes:    document.getElementById("offer-notes")?.value.trim(),
+  };
+  fetch(`/jobs/${jobId}/offer`, {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(data),
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (d.ok) showToast("Offer details saved");
+    else showToast("Error: " + d.error, true);
+  });
 }
 
 function showToast(msg, isError=false) {

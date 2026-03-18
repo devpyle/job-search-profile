@@ -25,6 +25,9 @@
         {% if job.status == 'Reviewing' %}
         <span class="checklist-badge" title="Open to see reviewing checklist">☑</span>
         {% endif %}
+        {% if job.status == 'Applied' %}
+        <button class="btn-sm btn-interviews" onclick="moveToInterviews('{{ job.id }}')" title="Move to Interview Tracker">→ Interviews</button>
+        {% endif %}
         <a href="{{ url_for('job_detail', job_id=job.id) }}" class="btn-sm">View</a>
       </div>
     </div>

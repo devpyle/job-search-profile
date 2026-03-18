@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Interviews{% endblock %}
+
+{% block content %}
+<div class="board-header">
+  <div class="board-toggle">
+    <a href="{{ url_for('board') }}" class="board-toggle-btn">Applications</a>
+    <a href="{{ url_for('interviews') }}" class="board-toggle-btn active">Interviews</a>
+  </div>
+  <div class="board-counts">{{ jobs|length }} active</div>
+</div>
+
+{% if not jobs %}
+<div class="empty-interviews">
+  <p>No active interview processes.</p>
+  <p>On the <a href="{{ url_for('board') }}">Applications board</a>, click <strong>→ Interviews</strong> on an Applied card when you get a callback.</p>
+</div>
+{% else %}
+<div class="interview-grid">
+  {% for job in jobs %}
+  {% set color = status_colors[job.status] if job.status in status_colors else '#94a3b8' %}
+  <div class="interview-card" style="border-top: 3px solid {{ color }}">
+    <div class="interview-card-status">
+      <span class="status-pill" style="background: {{ color }}">{{ job.status }}</span>
+    </div>
+    <div class="interview-card-title">{{ job.title }}</div>
+    <div class="interview-card-meta">
+      <span class="company">{{ job.company or '—' }}</span>
+      {% if job.location %}<span class="sep">·</span><span>{{ job.location }}</span>{% endif %}
+    </div>
+    <div class="interview-card-stats">
+      {% if job.round_count %}
+      <span class="stat-pill">{{ job.round_count }} round{{ 's' if job.round_count != 1 }}</span>
+      {% else %}
+      <span class="stat-pill muted">No rounds logged</span>
+      {% endif %}
+      {% if job.latest_round_date %}
+      <span class="stat-pill">Last: {{ job.latest_round_date[:10] }}</span>
+      {% endif %}
+      {% if job.recruiter_name %}
+      <span class="stat-pill">{{ job.recruiter_name }}</span>
+      {% endif %}
+    </div>
+    <div class="interview-card-footer">
+      <a href="{{ url_for('job_detail', job_id=job.id) }}" class="btn btn-primary">Open Tracker</a>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

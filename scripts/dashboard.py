@@ -15,6 +15,7 @@ import os
 import re
 import sqlite3
 import subprocess
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -42,22 +43,9 @@ EXPORT_DIR  = REPO_ROOT / "output" / "documents"
 
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 
-# ── USER CONFIG ───────────────────────────────────────────────────────────────
-# Edit these to match your own docs folder.
-
-CANDIDATE_NAME = "Your Name"
-
-# Job history docs, newest → oldest. pre-2011 early career is always excluded.
-JOB_DOCS = [
-    "2024-present-jenius-product-owner-middleware.md",
-    "2021-2024-broadridge-product-owner-scrum-master.md",
-    "2019-2021-first-citizens-business-analyst.md",
-    "2015-2019-deutsche-bank-avp-lead-ba.md",
-    "2011-2015-deutsche-bank-avp-associate-ba.md",
-]
-
-# Only included when the job description contains crypto/web3 keywords.
-CRYPTO_DOC = "thugdao-dao-council.md"
+# ── PERSONAL CONFIG (from config.py) ──────────────────────────────────────────
+sys.path.insert(0, str(REPO_ROOT))
+from config import CANDIDATE_NAME, JOB_DOCS, CRYPTO_DOC  # noqa: E402
 
 # ── KANBAN COLUMNS ────────────────────────────────────────────────────────────
 

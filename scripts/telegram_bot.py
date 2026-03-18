@@ -15,6 +15,10 @@ from openai import OpenAI
 
 load_dotenv()
 
+import sys  # noqa: E402
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from config import CANDIDATE_NAME  # noqa: E402
+
 TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 AUTHORIZED_USER = int(os.environ["TELEGRAM_USER_ID"])
 REPO_ROOT = Path(__file__).parent.parent
@@ -99,8 +103,8 @@ def save_state(state: dict):
 
 def build_system_prompt() -> str:
     sections = [
-        "You are a job search assistant. "
-        "You have full context of the user's career profile, target roles, and active job search. "
+        f"You are a job search assistant for {CANDIDATE_NAME}. "
+        "You have full context of their career profile, target roles, and active job search. "
         "Be direct, concise, and practical. No fluff.\n"
     ]
     for filename in ["personal-info.md", "technical-skills.md", "resume-generation-rules.md"]:

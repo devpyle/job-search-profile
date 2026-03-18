@@ -29,6 +29,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# ── SECRETS (from .env) ────────────────────────────────────────────────────────
 ADZUNA_APP_ID     = os.environ["ADZUNA_APP_ID"]
 ADZUNA_APP_KEY    = os.environ["ADZUNA_APP_KEY"]
 BRAVE_API_KEY     = os.environ["BRAVE_API_KEY"]
@@ -36,7 +37,17 @@ TAVILY_API_KEY    = os.environ["TAVILY_API_KEY"]
 ANTHROPIC_API_KEY = os.environ["ANTHROPIC_API_KEY"]
 GMAIL_APP_PW      = os.environ["GMAIL_APP_PW"]
 JSEARCH_API_KEY   = os.environ.get("JSEARCH_API_KEY", "")
-EMAIL = os.environ.get("GMAIL_TO", os.environ.get("GMAIL_FROM", ""))
+EMAIL             = os.environ.get("GMAIL_TO", os.environ.get("GMAIL_FROM", ""))
+
+# ── PERSONAL CONFIG (from config.py) ──────────────────────────────────────────
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from config import (  # noqa: E402
+    CANDIDATE_BACKGROUND, APPLY_NOW_DESCRIPTION,
+    HOME_CITY, HOME_STATE, HOME_METRO_TERMS, MIN_SALARY,
+    ADZUNA_QUERIES, BRAVE_QUERIES, TAVILY_QUERIES,
+    LI_REMOTE_QUERIES, LI_LOCAL_QUERIES,
+    JSEARCH_REMOTE_QUERIES, JSEARCH_LOCAL_QUERIES,
+)
 
 claude = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
@@ -487,7 +498,7 @@ DOMAIN_COMPANY_MAP: dict[str, str] = {
     "google":           "Google",
 }
 
-MIN_SALARY = 120_000
+# MIN_SALARY imported from config.py
 
 
 def is_staffing(title: str, company: str, description: str) -> bool:
@@ -597,22 +608,17 @@ def extract_salary_from_text(text: str) -> Optional[str]:
 
 # ── CLAUDE RATING ─────────────────────────────────────────────────────────────
 
-RATING_PROMPT = """\
-You are a job-fit rater for a Product Owner specializing in API platforms and middleware.
+RATING_PROMPT = f"""\
+You are a job-fit rater.
 
 Candidate background:
-- Current role: Middleware PO at a digital bank — API platform strategy in regulated fintech
-- Prior: PO/Scrum Master at a financial services firm (2021-2024), Business Analyst at two banks (2011-2021)
-- Target roles: Product Owner, API Product Manager, Platform Product Manager
-- Industries: fintech, banking, healthcare, SaaS, enterprise software, platform/infrastructure
-- Location: Raleigh NC — remote preferred, open to hybrid. **US-only** — international roles (outside the US) are out of scope even if remote.
-- Salary floor: $120K
+{CANDIDATE_BACKGROUND}
 
 Rate this job with one of these tiers:
-- "Apply Now" — strong fit: API/platform/middleware PO or PM role, ideally fintech/banking or remote
-- "Worth a Look" — good fit: product role related to his background, worth reviewing
+- "Apply Now" — {APPLY_NOW_DESCRIPTION}
+- "Worth a Look" — good fit: product role related to their background, worth reviewing
 - "Weak Match" — marginal: product-adjacent or BA role, not a priority
-- "Skip" — poor fit: irrelevant role, non-US location (e.g. Europe, Canada, Asia), onsite/hybrid outside Raleigh NC (e.g. onsite in New York, Chicago, San Francisco), or clearly below salary floor
+- "Skip" — poor fit: irrelevant role, non-US location (e.g. Europe, Canada, Asia), onsite/hybrid outside {HOME_CITY} {HOME_STATE} (e.g. onsite in New York, Chicago, San Francisco), or clearly below salary floor
 
 CRITICAL RATING RULES — these override everything else:
 1. Missing salary is NEVER a reason to Skip or downgrade. Rate on title and domain fit alone.
@@ -765,25 +771,7 @@ def dedup_keys(job: Job) -> list[str]:
 # ── SEARCH: ADZUNA ────────────────────────────────────────────────────────────
 
 def search_adzuna() -> list[Job]:
-    queries = [
-        {"what": "product owner API platform remote",                        "sort_by": "date", "max_days_old": 7},
-        {"what": "product owner middleware integration remote",               "sort_by": "date", "max_days_old": 7},
-        {"what": "product owner digital banking remote",                      "sort_by": "date", "max_days_old": 7},
-        {"what": "product owner online banking mobile banking remote",        "sort_by": "date", "max_days_old": 7},
-        {"what": "product owner CIAM identity authentication remote",         "sort_by": "date", "max_days_old": 7},
-        {"what": "product owner equities trading post-trade settlement remote","sort_by": "date", "max_days_old": 7},
-        {"what": "product owner wealth management brokerage remote",          "sort_by": "date", "max_days_old": 7},
-        {"what": "product manager capital markets financial services remote",  "sort_by": "date", "max_days_old": 7},
-        {"what": "product owner regulatory reporting compliance remote",      "sort_by": "date", "max_days_old": 7},
-        {"what": "product manager tax reporting fintech remote",              "sort_by": "date", "max_days_old": 7},
-        {"what": "product owner AI machine learning fintech remote",          "sort_by": "date", "max_days_old": 7},
-        {"what": "product manager blockchain crypto Web3 remote",             "sort_by": "date", "max_days_old": 7},
-        {"what": "product owner crypto exchange DeFi remote",                 "sort_by": "date", "max_days_old": 7},
-        {"what": "product owner remote",                                      "sort_by": "salary", "max_days_old": 7},
-        {"what": "product owner",  "where": "Raleigh, NC",                   "sort_by": "date", "max_days_old": 7},
-        {"what": "product manager", "where": "Raleigh, NC",                  "sort_by": "date", "max_days_old": 7},
-        {"what": "scrum master product owner remote",                         "sort_by": "date", "max_days_old": 7},
-    ]
+    queries = ADZUNA_QUERIES
     jobs = []
     for q in queries:
         try:
@@ -825,18 +813,7 @@ def search_adzuna() -> list[Job]:
 # ── SEARCH: BRAVE ─────────────────────────────────────────────────────────────
 
 def search_brave() -> list[Job]:
-    queries = [
-        '"product owner" API platform middleware remote job -staffing -recruiter',
-        '"product owner" digital banking fintech remote job -staffing -recruiter',
-        '"product owner" equities trading settlement "capital markets" remote job -staffing -recruiter',
-        '"product owner" OR "product manager" regulatory compliance reporting remote job -staffing -recruiter',
-        '"product owner" OR "product manager" AI "machine learning" fintech remote job -staffing -recruiter',
-        '"product owner" OR "product manager" blockchain crypto Web3 DeFi remote job -staffing -recruiter',
-        '"product owner" Raleigh Durham RTP NC job -staffing -recruiter',
-        'site:boards.greenhouse.io "product owner" OR "product manager" fintech banking remote',
-        'site:jobs.lever.co "product owner" OR "product manager" fintech banking remote',
-        'site:jobs.ashbyhq.com "product owner" OR "product manager" fintech',
-    ]
+    queries = BRAVE_QUERIES
     jobs = []
     headers = {"Accept": "application/json", "X-Subscription-Token": BRAVE_API_KEY}
     for q in queries:
@@ -883,23 +860,7 @@ def _company_from_url(url: str) -> str:
 
 
 def search_tavily() -> list[Job]:
-    queries = [
-        '"product owner" OR "product manager" API platform middleware remote "job opening" OR "now hiring" OR "apply now"',
-        '"product owner" OR "product manager" digital banking fintech remote "job opening" OR "hiring" OR "apply"',
-        '"product owner" OR "product manager" equities trading settlement "capital markets" remote "job opening" OR "hiring"',
-        '"product owner" OR "product manager" regulatory compliance reporting fintech remote "job opening" OR "hiring"',
-        '"product owner" OR "product manager" wealth management brokerage remote "job opening" OR "hiring"',
-        '"product owner" OR "product manager" identity authentication CIAM onboarding remote "job opening" OR "hiring"',
-        '"product owner" OR "product manager" AI "machine learning" fintech remote "job opening" OR "hiring"',
-        '"product owner" OR "product manager" blockchain crypto Web3 DeFi remote "job opening" OR "hiring"',
-        'site:hiring.cafe "product owner" OR "product manager" remote',
-        'site:hiring.cafe "product owner" OR "product manager" fintech banking "capital markets"',
-        'site:hiring.cafe "product owner" OR "product manager" blockchain crypto AI',
-        'site:boards.greenhouse.io "product owner" OR "product manager" fintech banking payments trading remote',
-        'site:boards.greenhouse.io "product owner" OR "product manager" platform integration compliance remote',
-        'site:myworkdayjobs.com "product owner" OR "product manager" fintech banking financial services "united states" OR "remote"',
-        'site:myworkdayjobs.com "product owner" OR "product manager" remote "united states"',
-    ]
+    queries = TAVILY_QUERIES
     jobs = []
     for q in queries:
         try:
@@ -935,30 +896,7 @@ LI_HEADERS = {
 }
 LI_BASE_URL = "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search"
 
-LI_REMOTE_QUERIES = [
-    "product owner API platform middleware",
-    "product owner digital banking fintech",
-    "product owner equities trading capital markets",
-    "product owner regulatory compliance reporting",
-    "product owner wealth management brokerage",
-    "product owner identity authentication CIAM",
-    "product manager financial services",
-    "platform product manager",
-    "product owner AI machine learning fintech",
-    "product manager blockchain crypto Web3",
-    "product owner DeFi crypto exchange",
-    "scrum master product owner",
-]
-
-LI_RALEIGH_QUERIES = [
-    "product owner Raleigh NC",
-    "product manager Raleigh Durham RTP",
-    "business analyst Raleigh NC",
-    "scrum master Raleigh NC",
-    'product owner "First Citizens" OR "Q2" OR "Red Hat" OR "SAS Institute" OR "Bandwidth" OR "Pendo"',
-    'product manager "Fidelity" OR "MetLife" OR "Cisco" OR "IBM" OR "NetApp" OR "Lenovo" Raleigh',
-    'product owner "Truist" OR "Wells Fargo" OR "Bank of America" OR "LPL Financial" Raleigh Charlotte',
-]
+LI_RALEIGH_QUERIES = LI_LOCAL_QUERIES   # alias used in _li_is_local_valid() below
 
 
 def _li_fetch(keywords: str, remote: bool) -> list[Job]:
@@ -1261,29 +1199,9 @@ def search_jobicy() -> list[Job]:
 def search_jsearch() -> list[Job]:
     if not JSEARCH_API_KEY:
         return []
-    remote_queries = [
-        "Product Owner API platform remote",
-        "Product Owner digital banking fintech remote",
-        "Product Owner middleware integration remote",
-        "Platform Product Manager remote",
-        "Product Owner equities trading capital markets remote",
-        "Product Owner regulatory compliance fintech remote",
-        "Product Owner wealth management brokerage remote",
-        "Product Manager financial services remote",
-        "Product Owner AI machine learning fintech remote",
-        "Product Owner CIAM identity authentication remote",
-        "Senior Product Owner remote",
-        "Senior Product Manager fintech remote",
-    ]
-    local_queries = [
-        "Product Owner Raleigh NC",
-        "Product Manager Raleigh Durham NC",
-        "Product Owner North Carolina",
-    ]
-    nc_cities = {
-        "raleigh", "durham", "chapel hill", "cary", "morrisville", "apex",
-        "holly springs", "wake forest", "research triangle",
-    }
+    remote_queries = JSEARCH_REMOTE_QUERIES
+    local_queries  = JSEARCH_LOCAL_QUERIES
+    local_cities   = set(HOME_METRO_TERMS)
     jobs = []
     headers = {"X-RapidAPI-Key": JSEARCH_API_KEY, "X-RapidAPI-Host": "jsearch.p.rapidapi.com"}
     for q in remote_queries + local_queries:
@@ -1303,7 +1221,7 @@ def search_jsearch() -> list[Job]:
                     is_remote = item.get("job_is_remote", False)
                     city  = (item.get("job_city") or "").lower()
                     state = (item.get("job_state") or "").lower()
-                    local_match = (city in nc_cities) or (state in ("nc", "north carolina"))
+                    local_match = (city in local_cities) or (state in (HOME_STATE.lower(), HOME_STATE.lower() + " " + HOME_CITY.lower()))
                     if not is_remote and not local_match:
                         continue
                     loc = "Remote" if is_remote else f"{item.get('job_city', '')}, {item.get('job_state', '')}"

@@ -18,5 +18,7 @@ input/job-postings/
 input/raw-notes/
 # Zips
 *.zip
+# Personal config — keep local only, use config.example.py as template
+config.py
 # Personal profile docs — keep local only, templates are in docs/templates/
 docs/*.md

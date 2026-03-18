@@ -222,7 +222,7 @@ def parse_report(filepath: str) -> list[dict]:
                 break
         if matched:
             current_tier = matched
-            in_filtered  = (matched == "Skip")
+            in_filtered  = matched in ("Skip", "Weak Match")
             continue
 
         if in_filtered:

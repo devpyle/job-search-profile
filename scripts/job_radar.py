@@ -1756,8 +1756,9 @@ def build_report(jobs: list[Job], seen: dict, now: datetime) -> tuple[str, list[
 
     new_jobs.sort(key=_sort_key)
 
-    priority     = [j for j in new_jobs if j.tier in ("Apply Now", "Worth a Look")]
-    low_priority = [j for j in new_jobs if j.tier in ("Weak Match", "Skip")]
+    priority    = [j for j in new_jobs if j.tier in ("Apply Now", "Worth a Look")]
+    weak        = [j for j in new_jobs if j.tier == "Weak Match"]
+    skipped     = [j for j in new_jobs if j.tier == "Skip"]
     slot = "AM" if now.hour < 12 else "PM"
 
     lines = [
@@ -1814,13 +1815,26 @@ def build_report(jobs: list[Job], seen: dict, now: datetime) -> tuple[str, list[
                     lines.append(f"🔗 {job.url}")
                 lines.append("")
 
-        if low_priority:
+        if weak:
             lines.append(f"\n{'─' * 40}")
-            lines.append(f"⬇️  FILTERED OUT ({len(low_priority)} jobs — scan to catch mistakes)")
+            lines.append(f"⚠️  WEAK MATCH ({len(weak)} jobs)")
             lines.append(f"{'─' * 40}")
-            for job in low_priority:
-                label = "⚠️" if job.tier == "Weak Match" else "✗"
-                entry = f"{label} {job.title}"
+            for job in weak:
+                entry = f"⚠️ {job.title}"
+                if job.company:
+                    entry += f" — {job.company}"
+                if job.reason:
+                    entry += f"  [{job.reason}]"
+                lines.append(entry)
+                if job.url:
+                    lines.append(f"   {job.url}")
+
+        if skipped:
+            lines.append(f"\n{'─' * 40}")
+            lines.append(f"✗  SKIP ({len(skipped)} jobs — scan to catch mistakes)")
+            lines.append(f"{'─' * 40}")
+            for job in skipped:
+                entry = f"✗ {job.title}"
                 if job.company:
                     entry += f" — {job.company}"
                 if job.reason:

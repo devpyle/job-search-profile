@@ -45,7 +45,7 @@ ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 
 # ── PERSONAL CONFIG (from config.py) ──────────────────────────────────────────
 sys.path.insert(0, str(REPO_ROOT))
-from config import CANDIDATE_NAME, JOB_DOCS, CRYPTO_DOC  # noqa: E402
+from config import CANDIDATE_NAME, JOB_DOCS  # noqa: E402
 
 # ── KANBAN COLUMNS ────────────────────────────────────────────────────────────
 
@@ -326,11 +326,6 @@ def _read_doc(filename: str) -> str:
     p = DOCS_DIR / filename
     return p.read_text(encoding="utf-8") if p.exists() else ""
 
-def _is_crypto(description: str) -> bool:
-    terms = {"crypto", "blockchain", "web3", "defi", "nft", "dao", "token",
-              "solana", "ethereum", "bitcoin", "digital asset"}
-    desc  = description.lower()
-    return any(t in desc for t in terms)
 
 def generate_documents(job: dict, instructions: str = "") -> dict:
     """Call Claude Sonnet to generate resume + cover letter markdown."""
@@ -340,8 +335,6 @@ def generate_documents(job: dict, instructions: str = "") -> dict:
     edu      = _read_doc("education.md")
 
     history_parts = [_read_doc(f) for f in JOB_DOCS]
-    if _is_crypto(job.get("description", "") + job.get("title", "")):
-        history_parts.append(_read_doc(CRYPTO_DOC))
     history = "\n\n---\n\n".join(p for p in history_parts if p)
 
     regen_block = f"\n\nSPECIAL INSTRUCTIONS:\n{instructions}" if instructions else ""

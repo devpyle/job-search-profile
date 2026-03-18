@@ -150,7 +150,7 @@ cp config.example.py config.py
 Key settings in `config.py`:
 - `CANDIDATE_NAME`, `CANDIDATE_BACKGROUND` — your name and a short profile summary used for job rating
 - `HOME_CITY`, `HOME_STATE`, `HOME_METRO_TERMS` — your location for local job filtering
-- `JOB_DOCS`, `CRYPTO_DOC` — list of your `docs/` job files for the dashboard
+- `JOB_DOCS` — list of your `docs/` job files for the dashboard
 - Search query lists — `ADZUNA_QUERIES`, `LI_REMOTE_QUERIES`, `LI_LOCAL_QUERIES`, etc. — customize for your target roles
 - `BLOCKED_COMPANIES` — add companies as you find ones that keep slipping through filters
 - `DOMAIN_COMPANY_MAP` — add domains for better company name extraction from Workday/ATS URLs

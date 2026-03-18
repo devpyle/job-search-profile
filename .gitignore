@@ -8,3 +8,5 @@ output/*.zip
 input/*.zip
 output/documents/
 output/job-radar/debug_job_log.txt
+# Personal profile docs — keep local only, templates are in docs/templates/
+docs/*.md

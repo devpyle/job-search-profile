@@ -1459,7 +1459,7 @@ def search_ats_companies() -> list[Job]:
     TARGET_TITLES = [
         "product owner", "product manager", "platform product",
         "scrum master", "business analyst", "functional analyst",
-        "business functional analyst", "systems analyst",
+        "business functional analyst", "systems analyst", "business systems analyst",
         "avp product", "director of product", "principal product",
     ]
     BLOCK_SUFFIXES = ["representative", "specialist", "rep",

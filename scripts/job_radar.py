@@ -891,23 +891,21 @@ def search_tavily() -> list[Job]:
 LI_HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    )
+        "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Referer": "https://www.linkedin.com/",
 }
-LI_BASE_URL = "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search"
+LI_BASE_URL    = "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search"
+LI_DETAIL_URL  = "https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/{job_id}"
 
 LI_RALEIGH_QUERIES = LI_LOCAL_QUERIES   # alias used in _li_is_local_valid() below
 
 
-def _li_fetch(keywords: str, remote: bool) -> list[Job]:
-    from bs4 import BeautifulSoup
-    params = {"keywords": keywords, "geoId": "103644278", "f_TPR": "r604800", "start": 0}
-    if remote:
-        params["f_WT"] = "2"
-    time.sleep(1.5)
-    r = requests.get(LI_BASE_URL, params=params, headers=LI_HEADERS, timeout=10)
-    r.raise_for_status()
-    soup = BeautifulSoup(r.text, "html.parser")
+def _li_parse_cards(soup, remote: bool) -> list[Job]:
+    """Parse job cards from a LinkedIn search results soup."""
     jobs = []
     for card in soup.find_all("li"):
         title_el   = card.find("h3")
@@ -932,6 +930,77 @@ def _li_fetch(keywords: str, remote: bool) -> list[Job]:
             source="LinkedIn",
         ))
     return jobs
+
+
+def _li_fetch(keywords: str, remote: bool) -> list[Job]:
+    from bs4 import BeautifulSoup
+    import random
+    base_params = {
+        "keywords": keywords,
+        "geoId":    "103644278",   # United States
+        "f_TPR":    "r604800",     # last 7 days
+        "f_E":      "4,5",         # mid-senior level + director
+        "f_JT":     "F",           # full-time only
+        "sortBy":   "DD",          # newest first
+    }
+    if remote:
+        base_params["f_WT"] = "2,3"  # remote + hybrid
+    session = requests.Session()
+    session.headers.update(LI_HEADERS)
+    jobs = []
+    for page in range(2):  # pages 0 and 1 (25 results each)
+        if page > 0:
+            time.sleep(random.uniform(3, 7))
+        params = {**base_params, "start": page * 25}
+        try:
+            r = session.get(LI_BASE_URL, params=params, timeout=10)
+            r.raise_for_status()
+        except Exception:
+            break
+        soup = BeautifulSoup(r.text, "html.parser")
+        page_jobs = _li_parse_cards(soup, remote)
+        jobs.extend(page_jobs)
+        if len(page_jobs) < 20:  # fewer than expected — no more pages
+            break
+        if page == 0:
+            time.sleep(1.5)
+    return jobs
+
+
+def _li_fetch_description(job_url: str) -> str:
+    """Fetch full job description from LinkedIn detail endpoint. Returns empty string on failure."""
+    from bs4 import BeautifulSoup
+    m = re.search(r"/(\d+)(?:[/?]|$)", job_url)
+    if not m:
+        return ""
+    job_id = m.group(1)
+    try:
+        r = requests.get(LI_DETAIL_URL.format(job_id=job_id), headers=LI_HEADERS, timeout=10)
+        if r.status_code != 200:
+            return ""
+        soup = BeautifulSoup(r.text, "html.parser")
+        desc_el = soup.find("div", class_=lambda c: c and "description__text" in c)
+        if desc_el:
+            return _clean_desc(desc_el.get_text(" ", strip=True))
+    except Exception:
+        pass
+    return ""
+
+
+def li_enrich_descriptions(jobs: list[Job]) -> None:
+    """Fetch full descriptions for LinkedIn jobs that don't have one yet.
+    Mutates jobs in place. Called after pre-filtering to avoid fetching for discarded jobs."""
+    import random
+    li_jobs = [j for j in jobs if j.source == "LinkedIn" and not j.description]
+    if not li_jobs:
+        return
+    print(f"  Fetching descriptions for {len(li_jobs)} LinkedIn jobs...")
+    for i, job in enumerate(li_jobs):
+        if i > 0:
+            time.sleep(random.uniform(2, 5))
+        desc = _li_fetch_description(job.url)
+        if desc:
+            job.description = desc
 
 
 def search_linkedin() -> list[Job]:
@@ -1614,6 +1683,9 @@ def build_report(jobs: list[Job], seen: dict, now: datetime) -> tuple[str, list[
         for k in keys:
             new_seen[k] = today_str
             within_run_seen.add(k)
+
+    # ── Enrich LinkedIn jobs with full descriptions before rating ─────────────
+    li_enrich_descriptions(new_jobs)
 
     # ── Parallel Claude rating — batches of 3, 5s sleep between batches ──────
     # BATCH_SIZE=3 fires simultaneously; 5s pause prevents token-burst rate limits.

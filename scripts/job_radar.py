@@ -186,7 +186,8 @@ _WRONG_TITLE_RE = re.compile(
     r"^head of product\b"                        # usually people management
     r"|\bdata analyst\b"                         # wrong function
     r"|\b(sales|marketing) (manager|director|executive|rep|consultant|account)\b"
-    r"|\bcustomer (service|success|care) (rep|representative|specialist|associate|coordinator|manager|operations)\b"
+    r"|\bcustomer (service|care) (rep|representative|specialist|associate|coordinator|manager|operations)\b"
+    r"|\bcustomer success (rep|representative|specialist|associate|coordinator|operations)\b"  # block support-level CS only
     r"|\bcustomer experience (associate|representative|specialist|rep|coordinator)\b"  # CX support roles
     r"|\bclient success\b"                       # wrong function
     r"|\b(backend|frontend|software|engineering) (manager|lead|director)\b"
@@ -211,7 +212,6 @@ _WRONG_TITLE_RE = re.compile(
     r"|\bproduct design(er)?\b"                  # design track
     r"|\bproduct marketing\b"                    # marketing, not PM
     r"|\bproduct security engineer\b"            # security engineering
-    r"|\bcustomer success manager\b"             # CSM roles (not PM/PO/BA)
     r"|\blife underwriter\b"                     # insurance underwriting
     r"|\bimplementation specialist\b"            # implementation ops
     r"|\bcontact center rep\b"                   # contact center staffing
@@ -237,7 +237,6 @@ _WRONG_TITLE_RE = re.compile(
     r"|\bdigital marketing\b"                    # marketing function (not PM)
     r"|\bfranchise\b"                            # franchise/bizdev listings
     r"|program manager,?\s+sales\b"              # sales engineering program mgr (Samsara pattern)
-    r"|\bbusiness consultant\b"                  # consulting placement
     r"|\bteam lead.*command\b"                   # IT ops
     r"|\bpatient.specific instrument\b",         # medical device manufacturing
     re.IGNORECASE,
@@ -1457,12 +1456,35 @@ def search_ats_companies() -> list[Job]:
     ]
 
     TARGET_TITLES = [
+        # Product Owner / Manager family
         "product owner", "product manager", "platform product",
-        "scrum master", "business analyst", "functional analyst",
-        "business functional analyst", "systems analyst", "business systems analyst",
+        "technical product", "digital product", "api product",
+        "data product", "feature owner", "service owner", "capability owner",
+        "product analyst", "product operations", "product ops",
+        "product delivery", "product consultant",
+        # BA / Analyst family
+        "business analyst", "functional analyst", "business functional analyst",
+        "systems analyst", "business systems analyst", "technical analyst",
+        "solutions analyst", "integration analyst", "application analyst",
+        "enterprise analyst", "platform analyst", "technical program analyst",
+        "api analyst", "api specialist", "technical business analyst",
+        "process improvement", "continuous improvement",
+        # Agile / Delivery family
+        "scrum master", "scrum product owner", "agile business analyst",
+        "agile delivery", "iteration manager",
+        # Architecture / Solutions
+        "solutions architect", "business architect",
+        # Integration / Implementation
+        "integration manager", "implementation manager",
+        # Customer Success (technical/enterprise)
+        "technical customer success", "enterprise customer success",
+        "customer success manager",
+        # Pre-Sales / Sales Engineering
+        "sales engineer", "pre-sales", "presales",
+        # Leadership
         "avp product", "director of product", "principal product",
     ]
-    BLOCK_SUFFIXES = ["representative", "specialist", "rep",
+    BLOCK_SUFFIXES = ["representative", "rep",
                       "support agent", "support rep"]
 
     jobs: list[Job] = []

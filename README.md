@@ -65,10 +65,10 @@ Built and maintained using [Claude Code](https://claude.ai/code). Released under
 ```
 job-search-profile/
 ├── CLAUDE.md                          # Claude Code instructions
-├── .env                               # API keys (never commit)
-├── config.py                          # your personal settings (never commit)
+├── .env                               # create locally — your API keys (gitignored)
+├── config.py                          # create locally — copy from config.example.py (gitignored)
 ├── config.example.py                  # template — copy this to config.py to get started
-├── docs/                              # personal profile docs — local only, not in git
+├── docs/                              # create locally — your personal profile docs (gitignored)
 │   ├── personal-info.md               # contact, headline, summary
 │   ├── technical-skills.md            # master skills list
 │   ├── education.md                   # degrees and formatting

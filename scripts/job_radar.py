@@ -1745,7 +1745,16 @@ def build_report(jobs: list[Job], seen: dict, now: datetime) -> tuple[str, list[
             time.sleep(5)
 
     new_jobs = [j for j in rated if j is not None]
-    new_jobs.sort(key=lambda j: TIER_ORDER.get(j.tier, 99))
+
+    def _sort_key(j: Job) -> tuple:
+        # Within each tier, local Triangle-area companies float to the top.
+        # A job is "local" if its location field contains any RTP-area term,
+        # even if the role is posted as remote or hybrid.
+        loc = j.location.lower()
+        is_local = any(term in loc for term in HOME_METRO_TERMS) or ", nc" in loc
+        return (TIER_ORDER.get(j.tier, 99), 0 if is_local else 1)
+
+    new_jobs.sort(key=_sort_key)
 
     priority     = [j for j in new_jobs if j.tier in ("Apply Now", "Worth a Look")]
     low_priority = [j for j in new_jobs if j.tier in ("Weak Match", "Skip")]

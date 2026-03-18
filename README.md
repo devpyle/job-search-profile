@@ -44,6 +44,8 @@ Built and maintained using [Claude Code](https://claude.ai/code).
 job-search-profile/
 ├── CLAUDE.md                          # Claude Code instructions
 ├── .env                               # API keys (never commit)
+├── config.py                          # your personal settings (never commit)
+├── config.example.py                  # template — copy this to config.py to get started
 ├── docs/                              # personal profile docs — local only, not in git
 │   ├── personal-info.md               # contact, headline, summary
 │   ├── technical-skills.md            # master skills list
@@ -72,7 +74,8 @@ job-search-profile/
 └── scripts/
     ├── job_radar.py                   # automated search, filter, rate, email
     ├── dashboard.py                   # Flask dashboard — kanban, radar, doc gen
-    └── telegram_bot.py                # Telegram bot with multi-model AI chat
+    ├── telegram_bot.py                # Telegram bot with multi-model AI chat
+    └── test_linkedin.py               # standalone LinkedIn scrape test + email
 ```
 
 ---
@@ -113,8 +116,44 @@ job-search-profile/
 
 **Install dependencies:**
 ```bash
-pip install flask python-docx anthropic requests python-dotenv
+pip install flask python-docx anthropic openai google-genai requests beautifulsoup4 python-dotenv markdown
 ```
+
+**Create your `.env` file:**
+```
+ANTHROPIC_API_KEY=...
+OPENAI_API_KEY=...          # optional, for GPT-4o in Telegram bot
+GOOGLE_API_KEY=...          # optional, for Gemini in Telegram bot
+NVIDIA_API_KEY=...          # optional
+NVIDIA_BASE_URL=...         # optional
+MOONSHOT_API_KEY=...        # optional
+MOONSHOT_BASE_URL=...       # optional
+OPENROUTER_API_KEY=...      # optional
+OPENROUTER_BASE_URL=...     # optional
+ADZUNA_APP_ID=...
+ADZUNA_API_KEY=...
+BRAVE_API_KEY=...
+TAVILY_API_KEY=...
+JSEARCH_API_KEY=...         # optional
+GMAIL_FROM=you@gmail.com
+GMAIL_TO=you@gmail.com
+GMAIL_APP_PW=...
+TELEGRAM_BOT_TOKEN=...      # optional
+TELEGRAM_USER_ID=...        # optional
+```
+
+**Configure for yourself:**
+Copy `config.example.py` to `config.py` (gitignored) and fill it out:
+```bash
+cp config.example.py config.py
+```
+Key settings in `config.py`:
+- `CANDIDATE_NAME`, `CANDIDATE_BACKGROUND` — your name and a short profile summary used for job rating
+- `HOME_CITY`, `HOME_STATE`, `HOME_METRO_TERMS` — your location for local job filtering
+- `JOB_DOCS`, `CRYPTO_DOC` — list of your `docs/` job files for the dashboard
+- Search query lists — `ADZUNA_QUERIES`, `LI_REMOTE_QUERIES`, `LI_LOCAL_QUERIES`, etc. — customize for your target roles
+- `BLOCKED_COMPANIES` — add companies as you find ones that keep slipping through filters
+- `DOMAIN_COMPANY_MAP` — add domains for better company name extraction from Workday/ATS URLs
 
 **Run the dashboard:**
 ```bash
@@ -127,12 +166,6 @@ python scripts/dashboard.py
 ```
 0 9,16 * * 1-5 cd /path/to/job-search-profile && python scripts/job_radar.py
 ```
-
-**Customizing for yourself:**
-- Edit the `USER CONFIG` block at the top of `scripts/dashboard.py` — swap in your name and your `docs/` filenames
-- Update `CANDIDATE_NAME`, `JOB_DOCS`, and `CRYPTO_DOC` to match your profile
-- Add companies to `BLOCKED_COMPANIES` in `job_radar.py` as you find ones that keep slipping through filters
-- Add domains to `DOMAIN_COMPANY_MAP` for better company name extraction from Workday/ATS URLs
 
 **Profile docs:**
 Most setup time is writing your `docs/` files. Template files showing the expected structure for each doc type are in `docs/templates/`. Once those are solid, Claude can generate a tailored resume in under 2 minutes.

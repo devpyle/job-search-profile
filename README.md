@@ -158,14 +158,6 @@ pip install flask python-docx anthropic openai google-genai requests beautifulso
 **Create your `.env` file:**
 ```
 ANTHROPIC_API_KEY=...
-OPENAI_API_KEY=...          # optional, for GPT-4o in Telegram bot
-GOOGLE_API_KEY=...          # optional, for Gemini in Telegram bot
-NVIDIA_API_KEY=...          # optional
-NVIDIA_BASE_URL=...         # optional
-MOONSHOT_API_KEY=...        # optional
-MOONSHOT_BASE_URL=...       # optional
-OPENROUTER_API_KEY=...      # optional
-OPENROUTER_BASE_URL=...     # optional
 ADZUNA_APP_ID=...
 ADZUNA_API_KEY=...
 BRAVE_API_KEY=...

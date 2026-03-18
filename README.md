@@ -2,7 +2,7 @@
 
 A Claude Code-powered job search system that runs automated daily searches across multiple job APIs, emails you results twice a day, and provides a full web dashboard for tracking applications and generating tailored resumes and cover letters.
 
-Built and maintained using [Claude Code](https://claude.ai/code).
+Built and maintained using [Claude Code](https://claude.ai/code). Released under the [MIT License](LICENSE).
 
 ---
 

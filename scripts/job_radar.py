@@ -627,11 +627,11 @@ CRITICAL RATING RULES — these override everything else:
 5. Only Skip when a hard disqualifier is CONFIRMED — not merely suspected.
 
 Return ONLY a JSON object with these keys:
-{{
+{{{{
   "tier": "<one of the four tiers above>",
   "reason": "<one sentence explaining the rating>",
   "salary": "<extracted salary range from description, or empty string if none found>"
-}}
+}}}}
 
 Job:
 Title: {{title}}

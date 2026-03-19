@@ -634,11 +634,11 @@ Return ONLY a JSON object with these keys:
 }}
 
 Job:
-Title: {title}
-Company: {company}
-Location: {location}
-Salary: {salary}
-Description: {description}
+Title: {{title}}
+Company: {{company}}
+Location: {{location}}
+Salary: {{salary}}
+Description: {{description}}
 """
 
 

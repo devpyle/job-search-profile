@@ -138,9 +138,10 @@ job-search-profile/
 **Prerequisites:**
 - [Claude Code](https://claude.ai/code) with a Pro or Max subscription
 - Python 3.10+
-- Free API keys: [Adzuna](https://developer.adzuna.com/) · [Brave Search](https://api.search.brave.com/) · [Tavily](https://tavily.com/)
+- Free API keys: [Adzuna](https://developer.adzuna.com/) · [Tavily](https://tavily.com/)
+- (Optional) [Brave Search API](https://api.search.brave.com/) — paid, but adds broader web search coverage
+- (Optional) Gmail account with an [App Password](https://myaccount.google.com/apppasswords) — for email delivery of reports. Skip if you'll use the dashboard only.
 - [Anthropic API key](https://console.anthropic.com/) — used for Claude Haiku job rating in `job_radar.py`
-- Gmail account with an [App Password](https://myaccount.google.com/apppasswords)
 - (Optional) Telegram bot token for mobile access
 
 **Run the setup script** (handles deps, .env, config.py, docs, and cron for you):
@@ -160,12 +161,12 @@ pip install flask python-docx anthropic openai google-genai requests beautifulso
 ANTHROPIC_API_KEY=...
 ADZUNA_APP_ID=...
 ADZUNA_API_KEY=...
-BRAVE_API_KEY=...
+BRAVE_API_KEY=...           # optional (paid API)
 TAVILY_API_KEY=...
 JSEARCH_API_KEY=...         # optional
-GMAIL_FROM=you@gmail.com
-GMAIL_TO=you@gmail.com
-GMAIL_APP_PW=...
+GMAIL_FROM=you@gmail.com    # optional — skip if using dashboard only
+GMAIL_TO=you@gmail.com      # optional
+GMAIL_APP_PW=...            # optional
 TELEGRAM_BOT_TOKEN=...      # optional
 TELEGRAM_USER_ID=...        # optional
 ```

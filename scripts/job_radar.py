@@ -32,10 +32,10 @@ load_dotenv()
 # ── SECRETS (from .env) ────────────────────────────────────────────────────────
 ADZUNA_APP_ID     = os.environ["ADZUNA_APP_ID"]
 ADZUNA_APP_KEY    = os.environ["ADZUNA_APP_KEY"]
-BRAVE_API_KEY     = os.environ["BRAVE_API_KEY"]
+BRAVE_API_KEY     = os.environ.get("BRAVE_API_KEY", "")
 TAVILY_API_KEY    = os.environ["TAVILY_API_KEY"]
 ANTHROPIC_API_KEY = os.environ["ANTHROPIC_API_KEY"]
-GMAIL_APP_PW      = os.environ["GMAIL_APP_PW"]
+GMAIL_APP_PW      = os.environ.get("GMAIL_APP_PW", "")
 JSEARCH_API_KEY   = os.environ.get("JSEARCH_API_KEY", "")
 EMAIL             = os.environ.get("GMAIL_TO", os.environ.get("GMAIL_FROM", ""))
 
@@ -47,6 +47,7 @@ from config import (  # noqa: E402
     ADZUNA_QUERIES, BRAVE_QUERIES, TAVILY_QUERIES,
     LI_REMOTE_QUERIES, LI_LOCAL_QUERIES,
     JSEARCH_REMOTE_QUERIES, JSEARCH_LOCAL_QUERIES,
+    ADZUNA_COUNTRY, REQUIRE_US_LOCATION,
 )
 
 claude = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
@@ -774,7 +775,7 @@ def search_adzuna() -> list[Job]:
     for q in queries:
         try:
             r = requests.get(
-                "https://api.adzuna.com/v1/api/jobs/us/search/1",
+                f"https://api.adzuna.com/v1/api/jobs/{ADZUNA_COUNTRY}/search/1",
                 params={"app_id": ADZUNA_APP_ID, "app_key": ADZUNA_APP_KEY,
                         "results_per_page": 20, "full_time": 1,
                         "content-type": "application/json", **q},
@@ -1688,7 +1689,7 @@ def build_report(jobs: list[Job], seen: dict, now: datetime) -> tuple[str, list[
             continue
         if is_bad_scrape(job):
             continue
-        if is_non_us_location(job):
+        if REQUIRE_US_LOCATION and is_non_us_location(job):
             continue
         if is_onsite_non_local(job):
             continue
@@ -1913,10 +1914,14 @@ def main(force_run: bool = False):
     raw_counts["LinkedIn"] = len(linkedin_jobs)
     print(f"  {len(linkedin_jobs)} results")
 
-    print("Searching Brave...")
-    brave_jobs = search_brave()
-    raw_counts["Brave"] = len(brave_jobs)
-    print(f"  {len(brave_jobs)} results")
+    brave_jobs = []
+    if BRAVE_API_KEY:
+        print("Searching Brave...")
+        brave_jobs = search_brave()
+        raw_counts["Brave"] = len(brave_jobs)
+        print(f"  {len(brave_jobs)} results")
+    else:
+        print("Skipping Brave (BRAVE_API_KEY not set)")
 
     print("Searching Tavily...")
     tavily_jobs = search_tavily()
@@ -1948,8 +1953,11 @@ def main(force_run: bool = False):
     apply_now = sum(1 for j in new_jobs if j.tier == "Apply Now")
     priority  = sum(1 for j in new_jobs if j.tier in ("Apply Now", "Worth a Look"))
     subject = f"Job Radar {now.strftime('%b %-d')} {slot.upper()} — {apply_now} Apply Now | {priority} priority / {len(new_jobs)} total"
-    send_email(subject, report, attachment=outfile)
-    print("Email sent.")
+    if EMAIL and GMAIL_APP_PW:
+        send_email(subject, report, attachment=outfile)
+        print("Email sent.")
+    else:
+        print("Email skipped (GMAIL_FROM/GMAIL_TO/GMAIL_APP_PW not configured). Report saved to disk.")
 
 
 if __name__ == "__main__":

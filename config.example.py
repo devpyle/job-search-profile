@@ -38,6 +38,15 @@ HOME_METRO_TERMS = [
 
 MIN_SALARY = 100_000   # jobs with confirmed salary below this are filtered out
 
+# Set to True to filter out jobs located outside the US.
+# Set to False if you are searching internationally.
+REQUIRE_US_LOCATION = True
+
+# Adzuna country code — controls which Adzuna job market is searched.
+# Common codes: us, gb, au, ca, de, fr, br, in, nz, sg, za
+# See https://developer.adzuna.com/ for the full list.
+ADZUNA_COUNTRY = "us"
+
 # ── DASHBOARD — DOCUMENT GENERATION ───────────────────────────────────────────
 
 # Job history doc filenames in docs/, newest → oldest.

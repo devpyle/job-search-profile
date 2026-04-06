@@ -1,0 +1,195 @@
+{% extends "base.html" %}
+{% block title %}Portal Scanner{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h2>Portal Scanner</h2>
+  <div class="portal-actions">
+    <button class="btn btn-primary" onclick="runScan()" id="scan-btn">
+      Scan All Portals
+    </button>
+    {% if scan %}
+    <span class="portal-meta">
+      Last scan: {{ scan.scanned_at[:16].replace('T',' ') }}
+      — {{ scan.jobs_found }} jobs from {{ scan.companies_hit }} companies
+    </span>
+    {% endif %}
+  </div>
+</div>
+
+<div class="scan-status hidden" id="scan-status"></div>
+
+{% if not jobs %}
+  {% if scan %}
+  <div class="empty-state">No matching jobs found in the last scan.</div>
+  {% else %}
+  <div class="empty-state">No scans yet. Click "Scan All Portals" to check Greenhouse, Lever, and Ashby career pages across 150+ companies.</div>
+  {% endif %}
+{% else %}
+
+  <div class="filter-tabs" id="source-tabs">
+    <button class="tab active" onclick="filterSource('all', this)">All ({{ jobs|length }})</button>
+    {% for src in ['Greenhouse', 'Lever', 'Ashby'] %}
+    {% set count = jobs | selectattr('source', 'equalto', src) | list | length %}
+    {% if count %}
+    <button class="tab" onclick="filterSource('{{ src }}', this)">{{ src }} ({{ count }})</button>
+    {% endif %}
+    {% endfor %}
+  </div>
+
+  <div class="filter-tabs" id="loc-tabs">
+    <button class="tab active" onclick="filterLoc('all', this)">All locations</button>
+    {% if loc_counts.remote %}
+    <button class="tab" onclick="filterLoc('remote', this)">Remote ({{ loc_counts.remote }})</button>
+    {% endif %}
+    {% if loc_counts.local %}
+    <button class="tab" onclick="filterLoc('local', this)">Raleigh area ({{ loc_counts.local }})</button>
+    {% endif %}
+    {% if loc_counts.other %}
+    <button class="tab" onclick="filterLoc('other', this)">Other US ({{ loc_counts.other }})</button>
+    {% endif %}
+  </div>
+
+  <div class="portal-summary">
+    {{ jobs|length }} jobs across {{ company_count }} companies
+  </div>
+
+  <div class="radar-list" id="portal-list">
+    {% for job in jobs %}
+    <div class="radar-card {% if job.is_saved %}is-saved{% endif %} {% if job.is_dismissed %}is-dismissed{% endif %}"
+         data-source="{{ job.source }}" data-loc="{{ job.loc_tag }}">
+      <div class="radar-card-header">
+        <div>
+          <div class="radar-title">{{ job.title }}</div>
+          <div class="radar-meta">
+            <strong>{{ job.company or '—' }}</strong>
+            {% if job.location %} · {{ job.location }}{% endif %}
+            {% if job.posted %} · {{ job.posted }}{% endif %}
+            · <em>{{ job.source }}</em>
+          </div>
+        </div>
+        <div class="radar-actions">
+          {% if job.url %}
+          <a href="{{ job.url }}" target="_blank" class="btn-sm btn-posting">↗ Posting</a>
+          {% endif %}
+          {% if job.is_saved %}
+            <span class="saved-badge">✓ Saved</span>
+          {% else %}
+            <button class="btn-sm btn-primary save-btn"
+                    data-job='{{ job | tojson }}'
+                    onclick="saveJob(this)">
+              + Save
+            </button>
+          {% endif %}
+        </div>
+      </div>
+      {% if job.description %}
+      <div class="radar-desc">{{ job.description | truncate(300) }}</div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+{% endif %}
+
+<div class="toast hidden" id="toast"></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function runScan() {
+  const btn    = document.getElementById("scan-btn");
+  const status = document.getElementById("scan-status");
+  btn.disabled    = true;
+  btn.textContent = "Scanning… (checking 150+ companies)";
+  status.textContent = "Scanning Greenhouse, Lever, and Ashby APIs…";
+  status.classList.remove("hidden");
+
+  fetch("/portals/scan", { method: "POST" })
+  .then(r => {
+    if (!r.ok) throw new Error(`Server returned ${r.status}`);
+    return r.json();
+  })
+  .then(d => {
+    btn.disabled    = false;
+    btn.textContent = "Scan All Portals";
+    if (d.ok) {
+      status.textContent = `Found ${d.found} jobs across ${d.companies} companies. Reloading…`;
+      setTimeout(() => location.reload(), 1000);
+    } else {
+      status.textContent = "Error: " + d.error;
+      showToast("Scan failed: " + d.error, true);
+    }
+  })
+  .catch(err => {
+    btn.disabled    = false;
+    btn.textContent = "Scan All Portals";
+    status.textContent = "Error: " + err.message;
+    showToast("Scan failed: " + err.message, true);
+  });
+}
+
+let activeSource = "all";
+let activeLoc    = "all";
+
+function applyFilters() {
+  document.querySelectorAll(".radar-card").forEach(card => {
+    const srcOk = activeSource === "all" || card.dataset.source === activeSource;
+    const locOk = activeLoc    === "all" || card.dataset.loc    === activeLoc;
+    card.style.display = (srcOk && locOk) ? "" : "none";
+  });
+}
+
+function filterSource(source, btn) {
+  document.querySelectorAll("#source-tabs .tab").forEach(t => t.classList.remove("active"));
+  btn.classList.add("active");
+  activeSource = source;
+  applyFilters();
+}
+
+function filterLoc(loc, btn) {
+  document.querySelectorAll("#loc-tabs .tab").forEach(t => t.classList.remove("active"));
+  btn.classList.add("active");
+  activeLoc = loc;
+  applyFilters();
+}
+
+function saveJob(btn) {
+  const job = JSON.parse(btn.dataset.job);
+  btn.disabled    = true;
+  btn.textContent = "Saving…";
+  fetch("/jobs/save", {
+    method:  "POST",
+    headers: {"Content-Type": "application/json"},
+    body:    JSON.stringify({
+      job_id:      job.job_id,
+      url:         job.url,
+      title:       job.title,
+      company:     job.company,
+      location:    job.location,
+      source:      job.source,
+      description: job.description,
+      posted:      job.posted,
+    }),
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (d.ok) {
+      btn.outerHTML = '<span class="saved-badge">✓ Saved</span>';
+      btn.closest(".radar-card").classList.add("is-saved");
+      showToast("Saved to board!");
+    } else {
+      btn.disabled    = false;
+      btn.textContent = "+ Save";
+      showToast("Error: " + d.error, true);
+    }
+  });
+}
+
+function showToast(msg, isError=false) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.className   = "toast" + (isError ? " toast-error" : "");
+  setTimeout(() => t.classList.add("hidden"), 3500);
+}
+</script>
+{% endblock %}

@@ -498,6 +498,52 @@ main { padding: 1.5rem; }
   white-space: pre-wrap;
 }
 
+/* ── Fit Analysis ── */
+.fit-section {
+  margin-top: 1.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--border);
+}
+.fit-section h3 { font-size: 15px; font-weight: 600; margin-bottom: 0.75rem; }
+.fit-empty { font-size: 13px; color: var(--muted); margin-bottom: 0.75rem; }
+.fit-status { font-size: 13px; color: var(--muted); margin-top: 0.5rem; }
+
+.fit-score-row {
+  display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.75rem;
+}
+.fit-score {
+  font-size: 20px; font-weight: 700; padding: 0.15rem 0.6rem;
+  border-radius: 6px;
+}
+.score-high { background: rgba(16,185,129,0.15); color: #10b981; }
+.score-mid  { background: rgba(251,191,36,0.15); color: #fbbf24; }
+.score-low  { background: rgba(239,68,68,0.15);  color: #ef4444; }
+.fit-date   { font-size: 12px; color: var(--muted); }
+
+.fit-summary {
+  font-size: 13px; color: var(--subtle); line-height: 1.6;
+  margin-bottom: 1rem;
+  padding: 0.6rem 0.85rem;
+  background: var(--surface2); border: 1px solid var(--border); border-radius: 6px;
+}
+
+.fit-detail {
+  margin-bottom: 0.5rem;
+  border: 1px solid var(--border); border-radius: 6px;
+  overflow: hidden;
+}
+.fit-detail summary {
+  font-size: 13px; font-weight: 600; padding: 0.5rem 0.85rem;
+  background: var(--surface2); cursor: pointer; user-select: none;
+  color: var(--subtle);
+}
+.fit-detail summary:hover { color: var(--fg); }
+.fit-content {
+  font-size: 13px; color: var(--muted); line-height: 1.7;
+  padding: 0.6rem 0.85rem;
+  white-space: pre-wrap;
+}
+
 .gen-section {
   margin-top: 2rem;
   padding-top: 1.5rem;
@@ -923,3 +969,42 @@ main { padding: 1.5rem; }
   white-space: nowrap;
 }
 .btn-interviews:hover { background: var(--accent2); color: #0D0D0D; }
+
+/* ── Portal Scanner ────────────────────────────────────────────────────────── */
+.portal-actions { display: flex; align-items: center; gap: 1rem; }
+.portal-meta { font-size: 12px; color: var(--muted); }
+.portal-summary { font-size: 13px; color: var(--muted); margin-bottom: 0.75rem; }
+.scan-status { font-size: 13px; color: var(--accent2); margin-bottom: 1rem; }
+
+/* ── Story Bank ────────────────────────────────────────────────────────────── */
+.stories-wrap { max-width: 800px; margin: 0 auto; padding: 1.5rem 1rem; }
+.stories-header h2 { font-size: 1.3rem; font-weight: 700; margin-bottom: 0.25rem; }
+.stories-subtitle { font-size: 13px; color: var(--muted); margin-bottom: 1.5rem; }
+
+.story-card {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem 1.15rem;
+  margin-bottom: 0.75rem;
+}
+.story-card-header { margin-bottom: 0.6rem; }
+.story-title { font-size: 14px; font-weight: 600; color: var(--fg); }
+.story-meta  { font-size: 12px; color: var(--muted); margin-top: 0.15rem; }
+
+.story-body {
+  font-size: 13px; color: var(--subtle); line-height: 1.7;
+  white-space: pre-wrap;
+}
+
+.story-tags {
+  margin-top: 0.6rem; padding-top: 0.5rem;
+  border-top: 1px solid var(--border);
+  display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;
+}
+.story-tags-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.story-tag {
+  font-size: 11px; padding: 0.15rem 0.5rem;
+  background: rgba(59,130,246,0.12); color: #60a5fa;
+  border-radius: 4px;
+}

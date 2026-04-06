@@ -116,7 +116,10 @@ function regenerate(jobId) {
     headers: {"Content-Type": "application/json"},
     body:    JSON.stringify({ instructions: instr }),
   })
-  .then(r => r.json())
+  .then(r => {
+    if (!r.ok) throw new Error(`Server returned ${r.status}`);
+    return r.json();
+  })
   .then(d => {
     btn.disabled    = false;
     btn.textContent = "↺ Regenerate";
@@ -128,6 +131,11 @@ function regenerate(jobId) {
     } else {
       showToast("Error: " + d.error, true);
     }
+  })
+  .catch(err => {
+    btn.disabled    = false;
+    btn.textContent = "↺ Regenerate";
+    showToast("Generation failed: " + err.message, true);
   });
 }
 

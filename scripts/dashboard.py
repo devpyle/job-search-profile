@@ -45,7 +45,8 @@ ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 
 # ── PERSONAL CONFIG (from config.py) ──────────────────────────────────────────
 sys.path.insert(0, str(REPO_ROOT))
-from config import CANDIDATE_NAME, JOB_DOCS  # noqa: E402
+from config import CANDIDATE_NAME, JOB_DOCS, HOME_METRO_TERMS  # noqa: E402
+from portal_scanner import scan_all as portal_scan_all  # noqa: E402
 
 # ── KANBAN COLUMNS ────────────────────────────────────────────────────────────
 
@@ -192,6 +193,39 @@ def init_db():
             deadline  TEXT,
             notes     TEXT,
             updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS fit_analyses (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            job_id       TEXT NOT NULL UNIQUE,
+            match_score  REAL,
+            matches_md   TEXT,
+            gaps_md      TEXT,
+            stories_md   TEXT,
+            summary      TEXT,
+            generated_at TEXT NOT NULL,
+            FOREIGN KEY (job_id) REFERENCES jobs(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS portal_scans (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            scanned_at   TEXT NOT NULL,
+            jobs_found   INTEGER NOT NULL DEFAULT 0,
+            companies_hit INTEGER NOT NULL DEFAULT 0
+        );
+
+        CREATE TABLE IF NOT EXISTS portal_results (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            scan_id      INTEGER NOT NULL,
+            job_id       TEXT NOT NULL,
+            title        TEXT NOT NULL,
+            company      TEXT,
+            location     TEXT,
+            url          TEXT,
+            source       TEXT,
+            description  TEXT,
+            posted       TEXT,
+            FOREIGN KEY (scan_id) REFERENCES portal_scans(id)
         );
     """)
     # Migrate old status names
@@ -395,9 +429,18 @@ ADDITIONAL RULES (these override the rules above where they conflict):
 - Cover letter: plain paragraphs only — date, greeting, 3-4 body paragraphs, sign-off. No markdown headers.
 - Respond ONLY with a valid JSON object — no preamble, no explanation, no markdown fences.
 - JSON format: {{"resume": "...", "cover_letter": "..."}}
-- Bold metrics and key results using **bold** in the resume bullets.
+- Do NOT use **bold** or any other inline emphasis inside bullet points or the summary. Plain text only for all bullets and the summary paragraph. Bold in bullets looks like AI wrote it.
 - Use - for bullet points.
 - Company name and dates go on the line directly below the ### Job Title line, formatted as: **Company Name** | Location | Start – End
+
+ATS KEYWORD OPTIMIZATION:
+Before writing, extract 15-20 key terms from the job description — specific technologies, methodologies, domain concepts, and role-specific phrases the ATS will scan for. Then naturally weave those terms into the resume and cover letter by reformulating existing experience to use the JD's vocabulary. Rules:
+- NEVER invent experience. Only rephrase what is already in the work history.
+- If the JD says "payment orchestration" and the work history says "payment routing and processing," use "payment orchestration" instead.
+- If the JD says "RTP" or "FedNow" and the candidate has real-time payments experience, name those rails explicitly.
+- Concentrate keywords in the Summary and the most relevant job bullets.
+- Include a Skills section that mirrors the JD's terminology where the candidate has genuine proficiency.
+- Do not keyword-stuff — every term must read naturally in context.
 {regen_block}
 
 DAVID'S PERSONAL INFO:
@@ -438,6 +481,75 @@ Generate the resume and cover letter. Return ONLY the JSON object."""
             "cover_letter": data.get("cover_letter", ""),
         }
     raise ValueError(f"Could not parse Claude response: {raw[:300]}")
+
+
+def generate_fit_analysis(job: dict) -> dict:
+    """Call Claude to produce a structured fit analysis for a job."""
+    personal = _read_doc("personal-info.md")
+    skills   = _read_doc("technical-skills.md")
+    history_parts = [_read_doc(f) for f in JOB_DOCS]
+    history = "\n\n---\n\n".join(p for p in history_parts if p)
+
+    prompt = f"""You are analyzing how well {CANDIDATE_NAME}'s experience matches a job posting.
+
+CANDIDATE PROFILE:
+{personal}
+
+TECHNICAL SKILLS:
+{skills}
+
+WORK HISTORY (includes Key Achievements and Signature Stories in STAR format):
+{history}
+
+JOB POSTING:
+Title:    {job.get('title', '')}
+Company:  {job.get('company', '')}
+Location: {job.get('location', '')}
+Description:
+{job.get('description', '(no description provided)')}
+
+Produce a fit analysis as a JSON object with these fields:
+
+1. "match_score": A number 1-10. Be honest — a 7 means strong match with minor gaps, a 5 means significant gaps.
+
+2. "matches": A markdown list mapping each major JD requirement to specific experience from the work history. Format each as:
+   - **JD Requirement** — matching experience from specific role. Be specific with details.
+   Only include requirements where there IS a real match.
+
+3. "gaps": A markdown list of JD requirements the candidate does NOT directly match, with a mitigation strategy for each. Format:
+   - **Gap** — mitigation: how adjacent experience or transferable skills could address this.
+   If there are no gaps, say "No significant gaps identified."
+
+4. "stories": Pick 3-5 Signature Stories (STAR format) from the work history that are most relevant to THIS job's requirements. For each, write:
+   - **Story title** (from which role) — why it's relevant to this JD
+   Then reproduce the STAR story verbatim from the work history.
+
+5. "summary": 2-3 sentence overall assessment. What's the strongest selling point? What's the biggest risk?
+
+Return ONLY a valid JSON object with keys: match_score, matches, gaps, stories, summary.
+No markdown fences, no preamble."""
+
+    result = subprocess.run(
+        ["claude", "-p", prompt],
+        capture_output=True, text=True, timeout=120,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"claude CLI error: {result.stderr[:300]}")
+
+    raw   = result.stdout.strip()
+    raw   = raw.replace("```json", "").replace("```", "").strip()
+    match = re.search(r"\{.*\}", raw, re.DOTALL)
+    if match:
+        data = json.loads(match.group())
+        return {
+            "match_score": data.get("match_score", 0),
+            "matches":     data.get("matches", ""),
+            "gaps":        data.get("gaps", ""),
+            "stories":     data.get("stories", ""),
+            "summary":     data.get("summary", ""),
+        }
+    raise ValueError(f"Could not parse fit analysis response: {raw[:300]}")
+
 
 # ── DOCX EXPORT ───────────────────────────────────────────────────────────────
 
@@ -552,6 +664,60 @@ def markdown_to_docx(md_text: str) -> Document:
 
     return doc
 
+# ── STORY BANK PARSER ─────────────────────────────────────────────────────────
+
+def _parse_stories_from_docs() -> list[dict]:
+    """Extract Signature Story (STAR) sections from all job docs."""
+    stories = []
+    for filename in JOB_DOCS:
+        text = _read_doc(filename)
+        if not text:
+            continue
+
+        # Extract company/title from frontmatter
+        company = title = ""
+        for line in text.split("\n"):
+            if line.startswith("company:"):
+                company = line.split(":", 1)[1].strip().strip('"')
+            elif line.startswith("title:"):
+                title = line.split(":", 1)[1].strip().strip('"')
+
+        # Find Signature story section
+        sig_match = re.search(
+            r"## Signature stor(?:y|ies)\s*\(STAR(?:\s+format)?\)\s*\n(.*?)(?=\n## |\Z)",
+            text, re.DOTALL,
+        )
+        if not sig_match:
+            continue
+
+        body = sig_match.group(1).strip()
+
+        # Check for ### sub-stories (multiple stories per role)
+        sub_stories = re.split(r"### (.+)\n", body)
+        if len(sub_stories) > 1:
+            # sub_stories = ['', 'Story 1 — title', 'content', 'Story 2 — title', 'content', ...]
+            for i in range(1, len(sub_stories), 2):
+                story_title = sub_stories[i].strip()
+                story_body  = sub_stories[i + 1].strip() if i + 1 < len(sub_stories) else ""
+                stories.append({
+                    "title":    story_title,
+                    "role":     title,
+                    "company":  company,
+                    "filename": filename,
+                    "body":     story_body,
+                })
+        else:
+            # Single story
+            stories.append({
+                "title":    f"{title} — {company}",
+                "role":     title,
+                "company":  company,
+                "filename": filename,
+                "body":     body,
+            })
+
+    return stories
+
 # ── ROUTES ────────────────────────────────────────────────────────────────────
 
 @app.route("/")
@@ -659,6 +825,112 @@ def radar(date=None, slot=None):
     return render_template("radar.html", jobs=jobs, reports=reports, current=current,
                            show_dismissed=show_dismissed, dismissed_count=len(dismissed_ids),
                            is_reviewed=is_reviewed)
+
+
+@app.route("/stories")
+def story_bank():
+    stories = _parse_stories_from_docs()
+
+    # Collect fit analysis stories to show which jobs each story was surfaced for
+    db = get_db()
+    analyses = db.execute(
+        "SELECT fa.job_id, fa.stories_md, j.title, j.company "
+        "FROM fit_analyses fa JOIN jobs j ON j.id = fa.job_id"
+    ).fetchall()
+
+    # For each doc story, find which fit analyses referenced it (by keyword match)
+    for story in stories:
+        story["used_in"] = []
+        # Match by a key phrase from the story body (first 60 chars of the Situation line)
+        situation_line = ""
+        for line in story["body"].split("\n"):
+            if line.startswith("**Situation:**"):
+                situation_line = line.replace("**Situation:**", "").strip()[:60]
+                break
+        if situation_line:
+            for a in analyses:
+                if a["stories_md"] and situation_line[:40] in a["stories_md"]:
+                    story["used_in"].append({
+                        "title":   a["title"],
+                        "company": a["company"],
+                    })
+
+    return render_template("stories.html", stories=stories)
+
+
+@app.route("/portals")
+def portals():
+    db = get_db()
+    # Get latest scan
+    scan = db.execute(
+        "SELECT * FROM portal_scans ORDER BY scanned_at DESC LIMIT 1"
+    ).fetchone()
+
+    jobs = []
+    if scan:
+        scan = dict(scan)
+        rows = db.execute(
+            "SELECT * FROM portal_results WHERE scan_id=? ORDER BY company, title",
+            (scan["id"],),
+        ).fetchall()
+
+        saved_ids    = {r["id"] for r in db.execute("SELECT id FROM jobs").fetchall()}
+        dismissed_ids = {r["job_id"] for r in db.execute("SELECT job_id FROM radar_dismissed").fetchall()}
+
+        remote_signals = ("remote", "work from home", "wfh", "distributed", "virtual")
+        for row in rows:
+            j = dict(row)
+            j["is_saved"]     = j["job_id"] in saved_ids
+            j["is_dismissed"] = j["job_id"] in dismissed_ids
+            loc = (j.get("location") or "").lower()
+            if any(t in loc for t in HOME_METRO_TERMS):
+                j["loc_tag"] = "local"
+            elif any(s in loc for s in remote_signals):
+                j["loc_tag"] = "remote"
+            else:
+                j["loc_tag"] = "other"
+            jobs.append(j)
+
+    loc_counts = {"local": 0, "remote": 0, "other": 0}
+    for j in jobs:
+        loc_counts[j.get("loc_tag", "other")] += 1
+
+    return render_template(
+        "portals.html",
+        scan=scan,
+        jobs=jobs,
+        company_count=len(set(j["company"] for j in jobs)),
+        loc_counts=loc_counts,
+    )
+
+
+@app.route("/portals/scan", methods=["POST"])
+def run_portal_scan():
+    try:
+        results = portal_scan_all()
+        db = get_db()
+        companies_hit = len(set(j["company"] for j in results))
+        db.execute(
+            "INSERT INTO portal_scans (scanned_at, jobs_found, companies_hit) VALUES (?,?,?)",
+            (datetime.now().isoformat(), len(results), companies_hit),
+        )
+        db.commit()
+        scan_id = db.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+
+        for j in results:
+            db.execute("""
+                INSERT INTO portal_results
+                  (scan_id, job_id, title, company, location, url, source, description, posted)
+                VALUES (?,?,?,?,?,?,?,?,?)
+            """, (
+                scan_id, j["job_id"], j["title"], j["company"],
+                j["location"], j["url"], j["source"],
+                j.get("description", ""), j.get("posted", ""),
+            ))
+        db.commit()
+        return jsonify({"ok": True, "found": len(results), "companies": companies_hit})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 
 @app.route("/jobs/save", methods=["POST"])
@@ -777,6 +1049,11 @@ def job_detail(job_id):
     ).fetchone()
     apply_url = apply_url_row["apply_url"] if apply_url_row else ""
 
+    fit_row = db.execute(
+        "SELECT * FROM fit_analyses WHERE job_id=?", (job_id,)
+    ).fetchone()
+    fit = dict(fit_row) if fit_row else None
+
     contacts = offer = rounds = None
     if dict(job)["status"] in ("Interviewing", "Offer"):
         contacts = [dict(r) for r in db.execute(
@@ -797,6 +1074,7 @@ def job_detail(job_id):
         notes=[dict(n) for n in notes],
         docs=[dict(d) for d in docs],
         apply_url=apply_url,
+        fit=fit,
         contacts=contacts,
         rounds=rounds,
         offer=offer,
@@ -927,6 +1205,34 @@ def generate(job_id):
         db.commit()
         doc_id = db.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
         return jsonify({"ok": True, "doc_id": doc_id, "version": max_v + 1})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/jobs/<job_id>/fit-analysis", methods=["POST"])
+def run_fit_analysis(job_id):
+    db  = get_db()
+    job = db.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
+    if not job:
+        return jsonify({"ok": False, "error": "job not found"}), 404
+    try:
+        result = generate_fit_analysis(dict(job))
+        db.execute("""
+            INSERT OR REPLACE INTO fit_analyses
+              (job_id, match_score, matches_md, gaps_md, stories_md, summary, generated_at)
+            VALUES (?,?,?,?,?,?,?)
+        """, (
+            job_id, result["match_score"],
+            result["matches"], result["gaps"],
+            result["stories"], result["summary"],
+            datetime.now().isoformat(),
+        ))
+        db.execute(
+            "UPDATE jobs SET status='Reviewing' WHERE id=? AND status='New'",
+            (job_id,),
+        )
+        db.commit()
+        return jsonify({"ok": True, "score": result["match_score"]})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 

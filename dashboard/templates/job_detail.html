@@ -162,6 +162,44 @@
     </div>
     {% endif %}
 
+    <!-- Fit Analysis -->
+    <div class="fit-section">
+      <h3>Fit Analysis</h3>
+      {% if fit %}
+      <div class="fit-results" id="fit-results">
+        <div class="fit-score-row">
+          <span class="fit-score {% if fit.match_score >= 7 %}score-high{% elif fit.match_score >= 5 %}score-mid{% else %}score-low{% endif %}">
+            {{ fit.match_score }}/10
+          </span>
+          <span class="fit-date">Analyzed {{ fit.generated_at[:16].replace('T',' ') }}</span>
+          <button class="btn-sm btn-outline" onclick="runFitAnalysis('{{ job.id }}')" id="rerun-fit-btn">Re-analyze</button>
+        </div>
+        <div class="fit-summary">{{ fit.summary }}</div>
+
+        <details class="fit-detail" open>
+          <summary>Experience Matches</summary>
+          <div class="fit-content">{{ fit.matches_md }}</div>
+        </details>
+
+        <details class="fit-detail">
+          <summary>Gaps &amp; Mitigations</summary>
+          <div class="fit-content">{{ fit.gaps_md }}</div>
+        </details>
+
+        <details class="fit-detail">
+          <summary>Relevant Interview Stories</summary>
+          <div class="fit-content fit-stories">{{ fit.stories_md }}</div>
+        </details>
+      </div>
+      {% else %}
+      <p class="fit-empty">Run a fit analysis to see how your experience matches this role, identify gaps, and surface relevant interview stories.</p>
+      <button class="btn btn-outline" onclick="runFitAnalysis('{{ job.id }}')" id="fit-btn">
+        Analyze Fit
+      </button>
+      <div class="fit-status hidden" id="fit-status"></div>
+      {% endif %}
+    </div>
+
     {% if job.description %}
     <div class="detail-description">{{ job.description }}</div>
     {% endif %}
@@ -403,6 +441,40 @@ function saveOffer(jobId) {
   .then(d => {
     if (d.ok) showToast("Offer details saved");
     else showToast("Error: " + d.error, true);
+  });
+}
+
+function runFitAnalysis(jobId) {
+  const btn    = document.getElementById("fit-btn") || document.getElementById("rerun-fit-btn");
+  const status = document.getElementById("fit-status");
+  btn.disabled    = true;
+  btn.textContent = "Analyzing… (this takes ~30s)";
+  if (status) { status.textContent = ""; status.classList.remove("hidden"); }
+
+  fetch(`/jobs/${jobId}/fit-analysis`, {
+    method:  "POST",
+    headers: {"Content-Type": "application/json"},
+  })
+  .then(r => {
+    if (!r.ok) throw new Error(`Server returned ${r.status}`);
+    return r.json();
+  })
+  .then(d => {
+    btn.disabled = false;
+    btn.textContent = btn.id === "rerun-fit-btn" ? "Re-analyze" : "Analyze Fit";
+    if (d.ok) {
+      showToast("Fit analysis complete! Reloading…");
+      setTimeout(() => location.reload(), 1000);
+    } else {
+      showToast("Error: " + d.error, true);
+      if (status) status.textContent = "Error: " + d.error;
+    }
+  })
+  .catch(err => {
+    btn.disabled = false;
+    btn.textContent = btn.id === "rerun-fit-btn" ? "Re-analyze" : "Analyze Fit";
+    showToast("Analysis failed: " + err.message, true);
+    if (status) status.textContent = "Error: " + err.message;
   });
 }
 

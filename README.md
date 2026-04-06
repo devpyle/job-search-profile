@@ -43,10 +43,23 @@ Built and maintained using [Claude Code](https://claude.ai/code). Released under
   - Comment box on every card to note why a job isn't a fit or flag search tweaks
   - Dismiss jobs you've reviewed — stays hidden on future visits, toggle to show dismissed
   - Mark entire reports as reviewed — ✓ appears in the report dropdown
+- **Portal Scanner** — on-demand scanning of 230+ company career pages across Greenhouse, Lever, and Ashby ATS platforms
+  - Filter by source (Greenhouse / Lever / Ashby) and location (Remote / Raleigh area / Other US)
+  - Filters out non-US jobs and on-site roles outside your metro area
+  - Save results directly to the kanban board
+- **Fit Analysis** — AI-powered evaluation of how well your experience matches a job posting
+  - Match score (1-10, color-coded), experience matches mapped to specific JD requirements
+  - Gap analysis with mitigation strategies for missing requirements
+  - Surfaces 3-5 relevant STAR interview stories from your work history
+  - Auto-moves job from New → Reviewing when analysis runs
+- **Interview Story Bank** — persistent view of all STAR stories from your job docs
+  - Cross-references fit analyses to show which jobs each story was surfaced for
+  - Ready reference for behavioral interview prep
 - **Job detail** — full description, timestamped notes, application URL field
   - Reviewing checklist: 7-step checklist (read JD, verify remote, check salary, research company, find hiring manager, paste apply URL, drag to Drafting) appears when card is in Reviewing
   - Paste and save a direct application URL — shows as a separate Apply Now button at the top
 - **Document generation** — generates tailored resume + cover letter via Claude (uses your Pro subscription via `claude -p`, no API cost)
+  - ATS keyword optimization — extracts 15-20 key terms from the JD and reformulates existing experience to match the posting's vocabulary without inventing experience
 - **Two-panel editor** — edit resume and cover letter side by side, regenerate with custom instructions, version history, mark final
 - **DOCX export** — download resume or cover letter as a Word file
 - **SQLite database** — all jobs, notes, documents, comments, dismissed state, and application URLs persist locally
@@ -87,6 +100,8 @@ job-search-profile/
 │   │   ├── base.html
 │   │   ├── board.html
 │   │   ├── radar.html
+│   │   ├── portals.html               # portal scanner results
+│   │   ├── stories.html               # interview story bank
 │   │   ├── job_detail.html
 │   │   ├── draft.html
 │   │   └── _card.html
@@ -96,6 +111,7 @@ job-search-profile/
 └── scripts/
     ├── job_radar.py                   # automated search, filter, rate, email
     ├── dashboard.py                   # Flask dashboard — kanban, radar, doc gen
+    ├── portal_scanner.py              # on-demand ATS career page scanner
     ├── telegram_bot.py                # Telegram bot with multi-model AI chat
     └── test_linkedin.py               # standalone LinkedIn scrape test + email
 ```
@@ -112,20 +128,30 @@ job-search-profile/
 3. Add comments to any job to note why it's not a fit (helps tune the search over time)
 4. Click **Mark Reviewed** when done with the report
 
+**Scanning career portals:**
+1. Go to **Portals** and click **Scan All Portals** — checks 230+ companies across Greenhouse, Lever, and Ashby
+2. Filter results by source and location (Remote / Raleigh area / Other US)
+3. Save interesting jobs to the board with **+ Save**
+
 **Working a saved job:**
 1. Go to **Board** — saved jobs land in the New column
-2. Drag the card to **Reviewing** — a checklist (☑) badge appears as a reminder
-3. Click **View** and work through the Reviewing checklist:
+2. Click **View** and run **Analyze Fit** — get a match score, experience mapping, gap analysis, and relevant interview stories
+3. Drag the card to **Reviewing** — a checklist (☑) badge appears as a reminder
+4. Work through the Reviewing checklist:
    - Read the full job description
    - Verify remote / location works
    - Check salary range (listed or Glassdoor)
    - Research the company (size, funding, culture)
    - Find the hiring manager on LinkedIn
    - Paste the application URL into the field and save
-4. Drag the card to **Drafting**, then click **View** → **Generate Resume + Cover Letter**
-5. Edit in the two-panel editor, add regeneration instructions if needed
-6. Download DOCX, **Mark Final** — drag card to **Ready**
-7. Move through Applied → Phone Screen → Interview → Offer as you progress
+5. Drag the card to **Drafting**, then click **View** → **Generate Resume + Cover Letter**
+6. Edit in the two-panel editor, add regeneration instructions if needed
+7. Download DOCX, **Mark Final** — drag card to **Ready**
+8. Move through Applied → Phone Screen → Interview → Offer as you progress
+
+**Preparing for interviews:**
+- Check the **Stories** tab for your STAR story bank — all signature stories from your work history in one place
+- Run a fit analysis on the job to see which stories are most relevant
 
 **To generate a resume without the dashboard:**
 1. Save the job description to `input/job-postings/company-title.txt`

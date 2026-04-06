@@ -11,8 +11,10 @@
   <nav class="topnav">
     <div class="nav-brand">Job <span>Search</span></div>
     <div class="nav-links">
-      <a href="{{ url_for('board') }}"  class="{% if request.endpoint == 'board'  %}active{% endif %}">Board</a>
-      <a href="{{ url_for('radar') }}"  class="{% if request.endpoint == 'radar'  %}active{% endif %}">Radar</a>
+      <a href="{{ url_for('board') }}"      class="{% if request.endpoint == 'board'      %}active{% endif %}">Board</a>
+      <a href="{{ url_for('radar') }}"      class="{% if request.endpoint == 'radar'      %}active{% endif %}">Radar</a>
+      <a href="{{ url_for('portals') }}"   class="{% if request.endpoint == 'portals'   %}active{% endif %}">Portals</a>
+      <a href="{{ url_for('story_bank') }}" class="{% if request.endpoint == 'story_bank' %}active{% endif %}">Stories</a>
     </div>
   </nav>
 

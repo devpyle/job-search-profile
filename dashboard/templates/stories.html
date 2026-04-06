@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Story Bank{% endblock %}
+
+{% block content %}
+<div class="stories-wrap">
+  <div class="stories-header">
+    <h2>Interview Story Bank</h2>
+    <p class="stories-subtitle">STAR stories from your work history — use these for behavioral interviews. Stories surfaced by fit analyses are tagged with the job they matched.</p>
+  </div>
+
+  {% for story in stories %}
+  <div class="story-card">
+    <div class="story-card-header">
+      <div class="story-title">{{ story.title }}</div>
+      <div class="story-meta">{{ story.role }} — {{ story.company }}</div>
+    </div>
+    <div class="story-body">{{ story.body }}</div>
+    {% if story.used_in %}
+    <div class="story-tags">
+      <span class="story-tags-label">Surfaced for:</span>
+      {% for job in story.used_in %}
+      <span class="story-tag">{{ job.title }} @ {{ job.company }}</span>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+  {% else %}
+  <div class="empty-state">No STAR stories found in your job docs. Add a "## Signature story (STAR)" section to your job files.</div>
+  {% endfor %}
+</div>
+{% endblock %}

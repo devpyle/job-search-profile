@@ -1,157 +1,28 @@
 """
 Portal scanner — checks Greenhouse, Lever, and Ashby APIs for matching job postings.
 
-Reuses company list and title filters from job_radar.py but runs independently
-so it can be called from the dashboard without heavy dependencies.
+Company lists, target titles, and name overrides are loaded from config.py
+(gitignored) so no personal data is committed to the repo.
 """
 
 import hashlib
 import html
 import re
+import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
 
 import requests
 
-# ── TITLE MATCHING ────────────────────────────────────────────────────────────
+# ── CONFIG (from gitignored config.py) ────────────────────────────────────────
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from config import (  # noqa: E402
+    PORTAL_COMPANIES, PORTAL_NAME_OVERRIDES,
+    PORTAL_TARGET_TITLES, PORTAL_BLOCK_SUFFIXES,
+)
 
-TARGET_TITLES = [
-    "product owner", "product manager", "platform product",
-    "technical product", "digital product", "api product",
-    "data product", "feature owner", "service owner", "capability owner",
-    "product analyst", "product operations", "product ops",
-    "product delivery", "product consultant",
-    "business analyst", "functional analyst", "business functional analyst",
-    "systems analyst", "business systems analyst", "technical analyst",
-    "solutions analyst", "integration analyst", "application analyst",
-    "enterprise analyst", "platform analyst", "technical program analyst",
-    "api analyst", "api specialist", "technical business analyst",
-    "process improvement", "continuous improvement",
-    "scrum master", "scrum product owner", "agile business analyst",
-    "agile delivery", "iteration manager",
-    "solutions architect", "business architect",
-    "integration manager", "implementation manager",
-    "technical customer success", "enterprise customer success",
-    "customer success manager",
-    "sales engineer", "pre-sales", "presales",
-    "avp product", "director of product", "principal product",
-]
-
-BLOCK_SUFFIXES = ["representative", "rep", "support agent", "support rep"]
-
-ATS_NAME_OVERRIDES = {
-    "mxtechnologiesinc":          "MX Technologies",
-    "galileofinancialtechnologies":"Galileo Financial Technologies",
-    "moderntreasury":             "Modern Treasury",
-    "treasuryprime":              "Treasury Prime",
-    "bluevineus":                 "Bluevine",
-    "leadbank":                   "Lead Bank",
-    "BestEgg":                    "Best Egg",
-    "oneapp":                     "OnePay",
-    "forbrightbank":              "Forbright Bank",
-    "tilthq":                     "Tilt",
-    "atbayjobs":                  "At-Bay",
-    "anchorage":                  "Anchorage Digital",
-    "versapay":                   "Versapay",
-    "ethoslife":                  "Ethos Life",
-    "securitize":                 "Securitize",
-    "truebill":                   "Rocket Money (Truebill)",
-    "nubank":                     "Nubank",
-    "whoop":                      "WHOOP",
-    "spreedly":                   "Spreedly",
-    "truv":                       "Truv",
-    "entersekt":                  "Entersekt",
-    "aledade":                    "Aledade",
-    "redventures":                "Red Ventures",
-    "oportun":                    "Oportun",
-    "modernhealth":               "Modern Health",
-    "sparkadvisors":              "Spark Advisors",
-    "employerdirecthealthcare":   "Employer Direct Healthcare",
-    "deepintent":                 "DeepIntent",
-    "myfundedfutures":            "My Funded Futures",
-    "missionlane":                "Mission Lane",
-    "Jerry.ai":                   "Jerry",
-}
-
-COMPANIES = [
-    # Consumer / neobanks
-    "chime", "dave", "current", "moneylion", "varomoney", "one-finance",
-    "majority", "albert", "cleo", "empower", "brigit",
-    "possible-finance", "lili", "found", "relay", "step", "greenlight",
-    "forbrightbank", "nubank", "tilthq",
-    # Payments
-    "stripe", "marqeta", "lithic", "highnote", "solid",
-    "dwolla", "remitly", "wise", "checkout-com",
-    "payoneer", "tipalti", "moderntreasury", "melio",
-    "flywire", "nuvei", "transcard", "alacriti", "finzly",
-    "trustly", "finix", "spreedly", "truv", "versapay",
-    "anchorage", "adyen",
-    # B2B banking
-    "mercury", "novo", "bluevineus", "ramp", "brex",
-    "bill", "expensify", "navan", "airbase",
-    "center", "mesh-payments", "corpay", "fleetcor", "wex",
-    # Lending / BNPL
-    "sofi", "lendingclub", "upstart", "prosper", "avant",
-    "earnest", "upgrade", "BestEgg",
-    "affirm", "bread-financial", "opploans", "self-financial",
-    "ondeck", "oportun", "kapitus", "kikoff", "wisetack",
-    # Banking infra
-    "plaid", "mxtechnologiesinc", "galileofinancialtechnologies", "unit", "synctera",
-    "treasuryprime", "column", "alloy", "sardine",
-    "socure", "persona", "onfido", "jumio", "checkr",
-    "prove", "entersekt", "middesk", "unit21", "parafin",
-    "pathward", "lendingtree", "whoop", "alt", "oneapp",
-    # Wealth / investing
-    "drivewealth", "alpaca", "apex-fintech",
-    "paxos", "cross-river", "leadbank",
-    "betterment", "wealthfront", "robinhood", "acorns",
-    "stash", "m1-finance", "altruist",
-    "tastytrade", "webull", "etoro",
-    "riskalyze", "orion-advisor", "envestnet", "securitize",
-    # Insurance
-    "lemonade", "root", "hippo", "oscar-health",
-    "policygenius", "ethos", "ethoslife", "kin",
-    "pie-insurance", "openly", "sure",
-    "next-insurance", "vouch", "corvus", "cowbell",
-    "embroker", "newfront", "counterpart",
-    "atbayjobs", "federato", "sureify",
-    # Regtech
-    "complyadvantage", "verafin", "flagright", "sentilink",
-    "inscribe", "ocrolus", "codat", "employerdirecthealthcare",
-    # Credit / data
-    "creditkarma", "nerdwallet", "bankrate", "truebill",
-    # Banking tech vendors
-    "ncino", "q2", "alkami", "backbase", "bottomline",
-    "finastra", "mambu", "thought-machine",
-    "finxact", "technisys", "zafin", "mbanq",
-    "nymbus", "bankjoy", "lumin-digital",
-    "apiture", "jack-henry", "fiserv", "fis",
-    # Major US banks
-    "capital-one", "american-express",
-    "citizens-bank", "truist", "first-citizens", "umb-financial",
-    "western-alliance",
-    # Payroll / HR fintech
-    "gusto", "rippling", "deel",
-    "ceridian", "paylocity", "paycom",
-    "bamboohr", "justworks", "trinet", "paycor",
-    # Earned wage access
-    "earnin", "dailypay", "payactiv", "rain", "clair", "tapcheck",
-    # Other fintech
-    "intuit", "paypal", "lending-club", "prosper-marketplace",
-    "broadridge", "tradeweb", "virtu-financial",
-    "aledade", "redventures", "engine",
-    "modernhealth", "sparkadvisors", "deepintent",
-    "missionlane", "Jerry.ai", "form3", "inkind", "myfundedfutures",
-    # NC / Raleigh-area
-    "live-oak-bank", "liveoakbank",
-    "coastal-credit-union", "pinnacle-financial", "pinnacle-bank",
-    "townebank", "live-oak-bancshares",
-    "navy-federal", "penfed", "becu",
-    "alliant", "first-tech", "rbfcu", "vystar",
-    "truliant", "self-help", "self-help-credit-union",
-]
-
-
-# ── LOCATION FILTERS (from job_radar.py) ──────────────────────────────────────
+# ── LOCATION FILTERS ─────────────────────────────────────────────────────────
+# These are universal geographic patterns, not personal data.
 
 _NON_US_RE = re.compile(
     # UK
@@ -185,13 +56,9 @@ _NON_US_RE = re.compile(
 )
 
 _LOC_CITY_RE = re.compile(
-    # Bay Area
     r"\b(san francisco|menlo park|palo alto|san jose|mountain view|sunnyvale|redwood city)\b"
-    # NYC / NJ
     r"|\b(new york|new york city|manhattan|brooklyn|jersey city|hoboken|stamford)\b"
-    # Seattle area
     r"|\b(seattle|bellevue|kirkland|redmond)\b"
-    # Other major non-Raleigh US metros
     r"|\bchicago\b"
     r"|\bboston\b"
     r"|\b(los angeles|west hollywood|santa monica|culver city)\b"
@@ -240,6 +107,8 @@ def _is_onsite_non_local(location: str, description: str = "") -> bool:
     return False
 
 
+# ── HELPERS ───────────────────────────────────────────────────────────────────
+
 def _clean_desc(text: str) -> str:
     if not text:
         return ""
@@ -251,21 +120,23 @@ def _clean_desc(text: str) -> str:
 
 def _title_match(title: str) -> bool:
     t = title.lower()
-    if not any(kw in t for kw in TARGET_TITLES):
+    if not any(kw in t for kw in PORTAL_TARGET_TITLES):
         return False
     if any(t.endswith(sfx) or f" {sfx}," in t or f" {sfx} " in t
-           for sfx in BLOCK_SUFFIXES):
+           for sfx in PORTAL_BLOCK_SUFFIXES):
         return False
     return True
 
 
 def _company_name(slug: str) -> str:
-    return ATS_NAME_OVERRIDES.get(slug, slug.replace("-", " ").title())
+    return PORTAL_NAME_OVERRIDES.get(slug, slug.replace("-", " ").title())
 
 
 def _job_id(url: str) -> str:
     return hashlib.sha256(url.encode()).hexdigest()[:12]
 
+
+# ── ATS API SCANNERS ─────────────────────────────────────────────────────────
 
 def _try_greenhouse(slug: str, seen_urls: set) -> list[dict]:
     try:
@@ -371,6 +242,8 @@ def _try_ashby(slug: str, seen_urls: set) -> list[dict]:
         return []
 
 
+# ── MAIN SCANNER ──────────────────────────────────────────────────────────────
+
 def scan_all(progress_callback=None) -> list[dict]:
     """Scan all configured companies across Greenhouse, Lever, and Ashby.
 
@@ -381,7 +254,7 @@ def scan_all(progress_callback=None) -> list[dict]:
     """
     seen_urls: set[str] = set()
     all_jobs: list[dict] = []
-    total = len(COMPANIES)
+    total = len(PORTAL_COMPANIES)
     hits = 0
 
     def _scan_company(slug):
@@ -391,7 +264,7 @@ def scan_all(progress_callback=None) -> list[dict]:
         return slug, found
 
     with ThreadPoolExecutor(max_workers=8) as pool:
-        futures = {pool.submit(_scan_company, slug): slug for slug in COMPANIES}
+        futures = {pool.submit(_scan_company, slug): slug for slug in PORTAL_COMPANIES}
         checked = 0
         for future in as_completed(futures):
             slug, found = future.result()
@@ -403,7 +276,6 @@ def scan_all(progress_callback=None) -> list[dict]:
                 progress_callback(checked, total, hits)
 
     # Filter out non-US and on-site non-local jobs
-    before = len(all_jobs)
     all_jobs = [
         j for j in all_jobs
         if not _is_non_us(j.get("location", ""), j.get("description", ""), j.get("title", ""))

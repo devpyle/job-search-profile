@@ -112,3 +112,36 @@ JSEARCH_LOCAL_QUERIES = [
     "Product Owner Your City ST",
     "Product Manager Your City Region ST",
 ]
+
+# ── PORTAL / ATS DIRECT SCANNER ─────────────────────────────────────────────
+# Shared between job_radar.py (cron) and portal_scanner.py (dashboard).
+# Companies to scan directly via Greenhouse, Lever, and Ashby ATS APIs.
+# Use the company's ATS slug (the subdomain in boards.greenhouse.io/SLUG).
+
+PORTAL_COMPANIES = [
+    # Add company ATS slugs here. Find them by visiting a company's careers
+    # page — the URL pattern tells you which ATS they use:
+    #   boards.greenhouse.io/SLUG  →  Greenhouse
+    #   jobs.lever.co/SLUG         →  Lever
+    #   jobs.ashbyhq.com/SLUG      →  Ashby
+    #
+    # Example slugs:
+    # "stripe", "plaid", "sofi", "chime", "ramp", "robinhood",
+]
+
+# Override display names for slugs that don't produce clean names.
+# slug.replace("-", " ").title() is the default — only add overrides where that's wrong.
+PORTAL_NAME_OVERRIDES = {
+    # "companyslug": "Display Name",
+}
+
+# Job titles to match when scanning portals. Case-insensitive substring match.
+# Both the radar and portal scanner use this list.
+PORTAL_TARGET_TITLES = [
+    "product owner", "product manager",
+    # Add your target titles here, e.g.:
+    # "software engineer", "data scientist", "designer",
+]
+
+# Suffixes that disqualify a title match (e.g. "support representative").
+PORTAL_BLOCK_SUFFIXES = ["representative", "rep", "support agent", "support rep"]

@@ -44,7 +44,7 @@ Built and maintained using [Claude Code](https://claude.ai/code). Released under
   - Dismiss jobs you've reviewed — stays hidden on future visits, toggle to show dismissed
   - Mark entire reports as reviewed — ✓ appears in the report dropdown
 - **Portal Scanner** — on-demand scanning of 230+ company career pages across Greenhouse, Lever, and Ashby ATS platforms
-  - Filter by source (Greenhouse / Lever / Ashby) and location (Remote / Raleigh area / Other US)
+  - Filter by source (Greenhouse / Lever / Ashby) and location (Remote / Local / Other US)
   - Filters out non-US jobs and on-site roles outside your metro area
   - Save results directly to the kanban board
 - **Fit Analysis** — AI-powered evaluation of how well your experience matches a job posting
@@ -130,7 +130,7 @@ job-search-profile/
 
 **Scanning career portals:**
 1. Go to **Portals** and click **Scan All Portals** — checks 230+ companies across Greenhouse, Lever, and Ashby
-2. Filter results by source and location (Remote / Raleigh area / Other US)
+2. Filter results by source and location (Remote / Local / Other US)
 3. Save interesting jobs to the board with **+ Save**
 
 **Working a saved job:**

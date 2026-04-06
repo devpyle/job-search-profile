@@ -48,6 +48,8 @@ from config import (  # noqa: E402
     LI_REMOTE_QUERIES, LI_LOCAL_QUERIES,
     JSEARCH_REMOTE_QUERIES, JSEARCH_LOCAL_QUERIES,
     ADZUNA_COUNTRY, REQUIRE_US_LOCATION,
+    PORTAL_COMPANIES, PORTAL_NAME_OVERRIDES,
+    PORTAL_TARGET_TITLES, PORTAL_BLOCK_SUFFIXES,
 )
 
 claude = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
@@ -1328,180 +1330,21 @@ def search_jsearch() -> list[Job]:
 
 def search_ats_companies() -> list[Job]:
     """Queries Greenhouse, Lever, and Ashby career APIs directly. No key needed."""
-    # Slug → display name overrides for cases where slug.replace("-"," ").title() is wrong
-    ATS_NAME_OVERRIDES = {
-        "mxtechnologiesinc":          "MX Technologies",
-        "galileofinancialtechnologies":"Galileo Financial Technologies",
-        "moderntreasury":             "Modern Treasury",
-        "treasuryprime":              "Treasury Prime",
-        "bluevineus":                 "Bluevine",
-        "leadbank":                   "Lead Bank",
-        "BestEgg":                    "Best Egg",
-        "oneapp":                     "OnePay",
-        "forbrightbank":              "Forbright Bank",
-        "tilthq":                     "Tilt",
-        "atbayjobs":                  "At-Bay",
-        "anchorage":                  "Anchorage Digital",
-        "versapay":                   "Versapay",
-        "ethoslife":                  "Ethos Life",
-        "securitize":                 "Securitize",
-        "truebill":                   "Rocket Money (Truebill)",
-        "nubank":                     "Nubank",
-        "whoop":                      "WHOOP",
-        "spreedly":                   "Spreedly",
-        "truv":                       "Truv",
-        "entersekt":                  "Entersekt",
-        "aledade":                    "Aledade",
-        "redventures":                "Red Ventures",
-        "oportun":                    "Oportun",
-        "modernhealth":               "Modern Health",
-        "sparkadvisors":              "Spark Advisors",
-        "employerdirecthealthcare":   "Employer Direct Healthcare",
-        "deepintent":                 "DeepIntent",
-        "myfundedfutures":            "My Funded Futures",
-        "missionlane":                "Mission Lane",
-        "Jerry.ai":                   "Jerry",
-    }
-
-    COMPANIES = [
-        # ── Consumer / neobanks ───────────────────────────────────────────────
-        "chime", "dave", "current", "moneylion", "varomoney", "one-finance",
-        "majority", "albert", "cleo", "empower", "brigit",
-        "possible-finance", "lili", "found", "relay", "step", "greenlight",
-        "forbrightbank",  # Lever confirmed slug (forbright-bank was 404)
-        "nubank",         # Brazilian neobank; has US remote + Miami roles
-        "tilthq",         # Tilt credit-building app; Ashby confirmed
-        # ── Payments ─────────────────────────────────────────────────────────
-        "stripe", "marqeta", "lithic", "highnote", "solid",
-        "dwolla", "remitly", "wise", "checkout-com",
-        "payoneer", "tipalti", "moderntreasury", "melio",
-        "flywire", "nuvei", "transcard", "alacriti", "finzly",
-        "trustly", "finix", "spreedly", "truv", "versapay",
-        "anchorage",      # crypto custody; most roles will be Skipped by Claude
-        "adyen",          # Dutch payments; all PM roles on-site — location filter catches
-        # ── B2B banking / business banking ───────────────────────────────────
-        "mercury", "novo", "bluevineus", "ramp", "brex",
-        "bill", "expensify", "navan", "airbase",
-        "center", "mesh-payments", "corpay", "fleetcor", "wex",
-        # ── Lending / BNPL ────────────────────────────────────────────────────
-        "sofi", "lendingclub", "upstart", "prosper", "avant",
-        "earnest", "upgrade", "BestEgg",
-        "affirm", "bread-financial", "opploans", "self-financial",
-        "ondeck", "oportun", "kapitus",
-        "kikoff",         # credit-builder; SF on-site — location filter catches
-        "wisetack",
-        # ── Banking infrastructure / embedded finance ─────────────────────────
-        "plaid", "mxtechnologiesinc", "galileofinancialtechnologies", "unit", "synctera",
-        "treasuryprime", "column", "alloy", "sardine",
-        "socure", "persona", "onfido", "jumio", "checkr",
-        "prove", "entersekt",
-        "middesk", "unit21", "parafin",
-        "pathward",       # banking-as-a-service
-        "lendingtree",    # fintech marketplace; all roles Seattle/Denver on-site
-        "whoop",          # wearables; all PM roles Boston on-site
-        "alt",            # collectibles fintech; all roles crypto/digital assets
-        "oneapp",         # OnePay (Walmart); Ashby slug
-        # ── Wealth / investing ────────────────────────────────────────────────
-        "drivewealth", "alpaca", "apex-fintech",
-        "paxos", "cross-river", "leadbank",
-        "betterment", "wealthfront", "robinhood", "acorns",
-        "stash", "m1-finance", "altruist",
-        "tastytrade", "webull", "etoro",
-        "riskalyze", "orion-advisor", "envestnet",
-        "securitize",     # blockchain securities
-        # ── Insurance (insurtech) ─────────────────────────────────────────────
-        "lemonade", "root", "hippo", "oscar-health",
-        "policygenius", "ethos", "ethoslife", "kin",
-        "pie-insurance", "openly", "sure",
-        "next-insurance", "vouch", "corvus", "cowbell",
-        "embroker", "newfront", "counterpart",
-        "atbayjobs", "federato", "sureify",
-        # ── Regtech / compliance / identity ──────────────────────────────────
-        "complyadvantage", "verafin", "flagright", "sentilink",
-        "inscribe", "ocrolus", "codat",
-        "employerdirecthealthcare",
-        # ── Credit / data / scoring ───────────────────────────────────────────
-        "creditkarma", "nerdwallet", "bankrate",
-        "truebill",       # Rocket Money / Truebill
-        # ── Banking technology vendors ────────────────────────────────────────
-        "ncino", "q2", "alkami", "backbase", "bottomline",
-        "finastra", "mambu", "thought-machine",
-        "finxact", "technisys", "zafin", "mbanq",
-        "nymbus", "bankjoy", "lumin-digital",
-        "apiture", "jack-henry", "fiserv", "fis",
-        # ── Major US banks ────────────────────────────────────────────────────
-        "capital-one", "american-express",
-        "citizens-bank", "truist", "first-citizens", "umb-financial",
-        "western-alliance",
-        # ── Payroll / HR fintech ──────────────────────────────────────────────
-        "gusto", "rippling", "deel",
-        "ceridian", "paylocity", "paycom",
-        "bamboohr", "justworks", "trinet", "paycor",
-        # ── Earned wage access ────────────────────────────────────────────────
-        "earnin", "dailypay", "payactiv", "rain", "clair", "tapcheck",
-        # ── Other fintech ─────────────────────────────────────────────────────
-        "intuit", "paypal", "lending-club", "prosper-marketplace",
-        "broadridge", "tradeweb", "virtu-financial",
-        "aledade", "redventures", "engine",
-        "modernhealth", "sparkadvisors", "deepintent",
-        "missionlane",    # consumer credit card fintech
-        "Jerry.ai",       # Jerry insurtech/auto super app (case-sensitive Ashby slug)
-        "form3", "inkind", "myfundedfutures",
-        # ── NC / Raleigh-area banks and institutions ──────────────────────────
-        "live-oak-bank", "liveoakbank",
-        "coastal-credit-union", "pinnacle-financial", "pinnacle-bank",
-        "townebank", "live-oak-bancshares",
-        "navy-federal", "penfed", "becu",
-        "alliant", "first-tech", "rbfcu", "vystar",
-        "truliant", "self-help", "self-help-credit-union",
-    ]
-
-    TARGET_TITLES = [
-        # Product Owner / Manager family
-        "product owner", "product manager", "platform product",
-        "technical product", "digital product", "api product",
-        "data product", "feature owner", "service owner", "capability owner",
-        "product analyst", "product operations", "product ops",
-        "product delivery", "product consultant",
-        # BA / Analyst family
-        "business analyst", "functional analyst", "business functional analyst",
-        "systems analyst", "business systems analyst", "technical analyst",
-        "solutions analyst", "integration analyst", "application analyst",
-        "enterprise analyst", "platform analyst", "technical program analyst",
-        "api analyst", "api specialist", "technical business analyst",
-        "process improvement", "continuous improvement",
-        # Agile / Delivery family
-        "scrum master", "scrum product owner", "agile business analyst",
-        "agile delivery", "iteration manager",
-        # Architecture / Solutions
-        "solutions architect", "business architect",
-        # Integration / Implementation
-        "integration manager", "implementation manager",
-        # Customer Success (technical/enterprise)
-        "technical customer success", "enterprise customer success",
-        "customer success manager",
-        # Pre-Sales / Sales Engineering
-        "sales engineer", "pre-sales", "presales",
-        # Leadership
-        "avp product", "director of product", "principal product",
-    ]
-    BLOCK_SUFFIXES = ["representative", "rep",
-                      "support agent", "support rep"]
 
     jobs: list[Job] = []
     seen_urls: set[str] = set()
 
     def _title_match(title: str) -> bool:
         t = title.lower()
-        if not any(kw in t for kw in TARGET_TITLES):
+        if not any(kw in t for kw in PORTAL_TARGET_TITLES):
             return False
         if any(t.endswith(sfx) or f" {sfx}," in t or f" {sfx} " in t
-               for sfx in BLOCK_SUFFIXES):
+               for sfx in PORTAL_BLOCK_SUFFIXES):
             return False
         return True
 
     def _company_name(slug: str) -> str:
-        return ATS_NAME_OVERRIDES.get(slug, slug.replace("-", " ").title())
+        return PORTAL_NAME_OVERRIDES.get(slug, slug.replace("-", " ").title())
 
     def _try_greenhouse(slug: str) -> list[Job]:
         try:
@@ -1593,10 +1436,10 @@ def search_ats_companies() -> list[Job]:
         except Exception:
             return []
 
-    total = len(COMPANIES)
+    total = len(PORTAL_COMPANIES)
     total_tried = total_hits = 0
     print(f"  ATS: checking {total} companies across Greenhouse / Lever / Ashby...")
-    for slug in COMPANIES:
+    for slug in PORTAL_COMPANIES:
         found  = _try_greenhouse(slug)
         found += _try_lever(slug)
         found += _try_ashby(slug)

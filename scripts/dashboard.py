@@ -45,7 +45,7 @@ ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 
 # ── PERSONAL CONFIG (from config.py) ──────────────────────────────────────────
 sys.path.insert(0, str(REPO_ROOT))
-from config import CANDIDATE_NAME, JOB_DOCS, HOME_METRO_TERMS  # noqa: E402
+from config import CANDIDATE_NAME, JOB_DOCS, HOME_METRO_TERMS, HOME_CITY  # noqa: E402
 from portal_scanner import scan_all as portal_scan_all  # noqa: E402
 
 # ── KANBAN COLUMNS ────────────────────────────────────────────────────────────
@@ -267,7 +267,7 @@ def parse_report(filepath: str) -> list[dict]:
     report_file = Path(filepath).name
 
     TIER_LABELS = {
-        # David's tier names
+        # Tier label mapping
         "APPLY NOW":    "Apply Now",
         "WORTH A LOOK": "Worth a Look",
         "WEAK MATCH":   "Weak Match",
@@ -443,7 +443,7 @@ Before writing, extract 15-20 key terms from the job description — specific te
 - Do not keyword-stuff — every term must read naturally in context.
 {regen_block}
 
-DAVID'S PERSONAL INFO:
+CANDIDATE PERSONAL INFO:
 {personal}
 
 EDUCATION:
@@ -901,6 +901,7 @@ def portals():
         jobs=jobs,
         company_count=len(set(j["company"] for j in jobs)),
         loc_counts=loc_counts,
+        local_label=f"{HOME_CITY} area",
     )
 
 

@@ -43,7 +43,7 @@
     <button class="tab" onclick="filterLoc('remote', this)">Remote ({{ loc_counts.remote }})</button>
     {% endif %}
     {% if loc_counts.local %}
-    <button class="tab" onclick="filterLoc('local', this)">Raleigh area ({{ loc_counts.local }})</button>
+    <button class="tab" onclick="filterLoc('local', this)">{{ local_label }} ({{ loc_counts.local }})</button>
     {% endif %}
     {% if loc_counts.other %}
     <button class="tab" onclick="filterLoc('other', this)">Other US ({{ loc_counts.other }})</button>

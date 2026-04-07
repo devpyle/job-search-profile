@@ -55,8 +55,8 @@ def _mock_response(json_data=None, content=None, status_code=200):
 
 
 class TestAdzuna:
-    @patch("job_radar.ADZUNA_QUERIES", [{"what": "product owner", "sort_by": "date", "max_days_old": 7}])
-    @patch("job_radar.requests.get")
+    @patch("sources.adzuna.ADZUNA_QUERIES", [{"what": "product owner", "sort_by": "date", "max_days_old": 7}])
+    @patch("sources.adzuna.requests.get")
     def test_parses_jobs(self, mock_get):
         mock_get.return_value = _mock_response(json_data=_load_json("adzuna.json"))
         jobs = jr.search_adzuna()
@@ -69,8 +69,8 @@ class TestAdzuna:
         # Predicted salary should be None
         assert jobs[1].salary_min is None
 
-    @patch("job_radar.ADZUNA_QUERIES", [{"what": "test", "sort_by": "date", "max_days_old": 7}])
-    @patch("job_radar.requests.get")
+    @patch("sources.adzuna.ADZUNA_QUERIES", [{"what": "test", "sort_by": "date", "max_days_old": 7}])
+    @patch("sources.adzuna.requests.get")
     def test_handles_error(self, mock_get):
         mock_get.side_effect = Exception("Connection timeout")
         jobs = jr.search_adzuna()
@@ -81,9 +81,9 @@ class TestAdzuna:
 
 
 class TestBrave:
-    @patch("job_radar.BRAVE_QUERIES", ["product owner remote"])
-    @patch("job_radar.requests.get")
-    @patch("job_radar.time.sleep")
+    @patch("sources.brave.BRAVE_QUERIES", ["product owner remote"])
+    @patch("sources.brave.requests.get")
+    @patch("sources.brave.time.sleep")
     def test_parses_jobs(self, mock_sleep, mock_get):
         mock_get.return_value = _mock_response(json_data=_load_json("brave.json"))
         jobs = jr.search_brave()
@@ -92,9 +92,9 @@ class TestBrave:
         assert "API Platform" in jobs[0].title
         assert jobs[0].url.startswith("https://")
 
-    @patch("job_radar.BRAVE_QUERIES", ["test"])
-    @patch("job_radar.requests.get")
-    @patch("job_radar.time.sleep")
+    @patch("sources.brave.BRAVE_QUERIES", ["test"])
+    @patch("sources.brave.requests.get")
+    @patch("sources.brave.time.sleep")
     def test_handles_error(self, mock_sleep, mock_get):
         mock_get.side_effect = Exception("API error")
         jobs = jr.search_brave()
@@ -105,8 +105,8 @@ class TestBrave:
 
 
 class TestTavily:
-    @patch("job_radar.TAVILY_QUERIES", ["product owner remote"])
-    @patch("job_radar.requests.post")
+    @patch("sources.tavily.TAVILY_QUERIES", ["product owner remote"])
+    @patch("sources.tavily.requests.post")
     def test_parses_jobs(self, mock_post):
         mock_post.return_value = _mock_response(json_data=_load_json("tavily.json"))
         jobs = jr.search_tavily()
@@ -114,8 +114,8 @@ class TestTavily:
         assert jobs[0].source == "Tavily"
         assert "Cloud Platform" in jobs[0].title
 
-    @patch("job_radar.TAVILY_QUERIES", ["test"])
-    @patch("job_radar.requests.post")
+    @patch("sources.tavily.TAVILY_QUERIES", ["test"])
+    @patch("sources.tavily.requests.post")
     def test_handles_error(self, mock_post):
         mock_post.side_effect = Exception("API error")
         jobs = jr.search_tavily()
@@ -130,7 +130,8 @@ class TestLinkedIn:
         from bs4 import BeautifulSoup
         html = _load_text("linkedin_cards.html")
         soup = BeautifulSoup(html, "html.parser")
-        jobs = jr._li_parse_cards(soup, remote=True)
+        from sources.linkedin import _li_parse_cards
+        jobs = _li_parse_cards(soup, remote=True)
         assert len(jobs) == 2
         assert jobs[0].source == "LinkedIn"
         assert jobs[0].title == "Product Owner — Payments"
@@ -141,8 +142,9 @@ class TestLinkedIn:
         from bs4 import BeautifulSoup
         html = _load_text("linkedin_cards.html")
         soup = BeautifulSoup(html, "html.parser")
+        from sources.linkedin import _li_parse_cards
         # Local mode filters for LI_NC_LOCATIONS — these fixtures don't have Raleigh
-        jobs = jr._li_parse_cards(soup, remote=False)
+        jobs = _li_parse_cards(soup, remote=False)
         assert len(jobs) == 0
 
 
@@ -150,8 +152,8 @@ class TestLinkedIn:
 
 
 class TestRemotive:
-    @patch("job_radar.requests.get")
-    @patch("job_radar.time.sleep")
+    @patch("sources.remote_boards.requests.get")
+    @patch("sources.remote_boards.time.sleep")
     def test_parses_jobs(self, mock_sleep, mock_get):
         mock_get.return_value = _mock_response(json_data=_load_json("remotive.json"))
         jobs = jr.search_remotive()
@@ -160,8 +162,8 @@ class TestRemotive:
         assert jobs[0].company == "Acme Corp"
         assert jobs[0].salary_text == "$120K-$150K"
 
-    @patch("job_radar.requests.get")
-    @patch("job_radar.time.sleep")
+    @patch("sources.remote_boards.requests.get")
+    @patch("sources.remote_boards.time.sleep")
     def test_handles_error(self, mock_sleep, mock_get):
         mock_get.side_effect = Exception("API error")
         jobs = jr.search_remotive()
@@ -172,7 +174,7 @@ class TestRemotive:
 
 
 class TestWeWorkRemotely:
-    @patch("job_radar.requests.get")
+    @patch("sources.remote_boards.requests.get")
     def test_parses_xml_feed(self, mock_get):
         mock_resp = _mock_response()
         mock_resp.content = _load_bytes("weworkremotely.xml")
@@ -184,7 +186,7 @@ class TestWeWorkRemotely:
         assert jobs[0].title == "Product Owner"  # " at Acme Corp" stripped
         assert "501" in jobs[0].url
 
-    @patch("job_radar.requests.get")
+    @patch("sources.remote_boards.requests.get")
     def test_handles_error(self, mock_get):
         mock_get.side_effect = Exception("Network error")
         jobs = jr.search_weworkremotely()
@@ -195,8 +197,8 @@ class TestWeWorkRemotely:
 
 
 class TestHimalayas:
-    @patch("job_radar.requests.get")
-    @patch("job_radar.time.sleep")
+    @patch("sources.remote_boards.requests.get")
+    @patch("sources.remote_boards.time.sleep")
     def test_parses_jobs(self, mock_sleep, mock_get):
         mock_resp = _mock_response()
         mock_resp.json.return_value = _load_json("himalayas.json")
@@ -208,8 +210,8 @@ class TestHimalayas:
         assert jobs[0].company == "Acme Corp"
         assert "$125,000" in jobs[0].salary_text
 
-    @patch("job_radar.requests.get")
-    @patch("job_radar.time.sleep")
+    @patch("sources.remote_boards.requests.get")
+    @patch("sources.remote_boards.time.sleep")
     def test_handles_error(self, mock_sleep, mock_get):
         mock_get.side_effect = Exception("API error")
         jobs = jr.search_himalayas()
@@ -220,7 +222,7 @@ class TestHimalayas:
 
 
 class TestRemoteOK:
-    @patch("job_radar.requests.get")
+    @patch("sources.remote_boards.requests.get")
     def test_parses_jobs(self, mock_get):
         mock_get.return_value = _mock_response(json_data=_load_json("remoteok.json"))
         jobs = jr.search_remoteok()
@@ -229,7 +231,7 @@ class TestRemoteOK:
         assert "Payments" in jobs[0].title
         assert "$130,000" in jobs[0].salary_text
 
-    @patch("job_radar.requests.get")
+    @patch("sources.remote_boards.requests.get")
     def test_handles_http_error(self, mock_get):
         mock_get.return_value = _mock_response(status_code=500)
         jobs = jr.search_remoteok()
@@ -240,8 +242,8 @@ class TestRemoteOK:
 
 
 class TestJobicy:
-    @patch("job_radar.requests.get")
-    @patch("job_radar.time.sleep")
+    @patch("sources.remote_boards.requests.get")
+    @patch("sources.remote_boards.time.sleep")
     def test_parses_jobs(self, mock_sleep, mock_get):
         mock_get.return_value = _mock_response(json_data=_load_json("jobicy.json"))
         jobs = jr.search_jobicy()
@@ -249,8 +251,8 @@ class TestJobicy:
         assert jobs[0].source == "Jobicy"
         assert "$120,000" in jobs[0].salary_text
 
-    @patch("job_radar.requests.get")
-    @patch("job_radar.time.sleep")
+    @patch("sources.remote_boards.requests.get")
+    @patch("sources.remote_boards.time.sleep")
     def test_handles_error(self, mock_sleep, mock_get):
         mock_get.side_effect = Exception("API error")
         jobs = jr.search_jobicy()
@@ -261,10 +263,10 @@ class TestJobicy:
 
 
 class TestJSearch:
-    @patch("job_radar.JSEARCH_REMOTE_QUERIES", ["Product Owner remote"])
-    @patch("job_radar.JSEARCH_LOCAL_QUERIES", [])
-    @patch("job_radar.JSEARCH_API_KEY", "test-key")
-    @patch("job_radar.requests.get")
+    @patch("sources.jsearch.JSEARCH_REMOTE_QUERIES", ["Product Owner remote"])
+    @patch("sources.jsearch.JSEARCH_LOCAL_QUERIES", [])
+    @patch("sources.jsearch.JSEARCH_API_KEY", "test-key")
+    @patch("sources.jsearch.requests.get")
     def test_parses_jobs(self, mock_get):
         mock_get.return_value = _mock_response(json_data=_load_json("jsearch.json"))
         jobs = jr.search_jsearch()
@@ -272,15 +274,15 @@ class TestJSearch:
         assert jobs[0].source == "JSearch"
         assert jobs[0].salary_min == 130000
 
-    @patch("job_radar.JSEARCH_API_KEY", "")
+    @patch("sources.jsearch.JSEARCH_API_KEY", "")
     def test_skips_without_key(self):
         jobs = jr.search_jsearch()
         assert jobs == []
 
-    @patch("job_radar.JSEARCH_REMOTE_QUERIES", ["test"])
-    @patch("job_radar.JSEARCH_LOCAL_QUERIES", [])
-    @patch("job_radar.JSEARCH_API_KEY", "test-key")
-    @patch("job_radar.requests.get")
+    @patch("sources.jsearch.JSEARCH_REMOTE_QUERIES", ["test"])
+    @patch("sources.jsearch.JSEARCH_LOCAL_QUERIES", [])
+    @patch("sources.jsearch.JSEARCH_API_KEY", "test-key")
+    @patch("sources.jsearch.requests.get")
     def test_handles_timeout_retry(self, mock_get):
         import requests as req
         mock_get.side_effect = [
@@ -297,9 +299,9 @@ class TestJSearch:
 
 
 class TestATS:
-    @patch("job_radar.PORTAL_COMPANIES", ["testco"])
-    @patch("job_radar.time.sleep")
-    @patch("job_radar.requests.get")
+    @patch("sources.ats.PORTAL_COMPANIES", ["testco"])
+    @patch("sources.ats.time.sleep")
+    @patch("sources.ats.requests.get")
     def test_greenhouse_parses_matching_titles(self, mock_get, mock_sleep):
         def side_effect(url, **kwargs):
             if "greenhouse" in url:
@@ -314,9 +316,9 @@ class TestATS:
         assert po_jobs[0].source == "Greenhouse"
         assert po_jobs[0].company == "Testco"
 
-    @patch("job_radar.PORTAL_COMPANIES", ["testco"])
-    @patch("job_radar.time.sleep")
-    @patch("job_radar.requests.get")
+    @patch("sources.ats.PORTAL_COMPANIES", ["testco"])
+    @patch("sources.ats.time.sleep")
+    @patch("sources.ats.requests.get")
     def test_lever_parses_matching_titles(self, mock_get, mock_sleep):
         def side_effect(url, **kwargs):
             if "lever" in url:
@@ -331,9 +333,9 @@ class TestATS:
         assert len(po_jobs) == 1
         assert po_jobs[0].source == "Lever"
 
-    @patch("job_radar.PORTAL_COMPANIES", ["testco"])
-    @patch("job_radar.time.sleep")
-    @patch("job_radar.requests.get")
+    @patch("sources.ats.PORTAL_COMPANIES", ["testco"])
+    @patch("sources.ats.time.sleep")
+    @patch("sources.ats.requests.get")
     def test_ashby_parses_matching_titles(self, mock_get, mock_sleep):
         def side_effect(url, **kwargs):
             if "ashby" in url:
@@ -346,9 +348,9 @@ class TestATS:
         assert len(po_jobs) == 1
         assert po_jobs[0].source == "Ashby"
 
-    @patch("job_radar.PORTAL_COMPANIES", ["testco"])
-    @patch("job_radar.time.sleep")
-    @patch("job_radar.requests.get")
+    @patch("sources.ats.PORTAL_COMPANIES", ["testco"])
+    @patch("sources.ats.time.sleep")
+    @patch("sources.ats.requests.get")
     def test_all_three_combined(self, mock_get, mock_sleep):
         def side_effect(url, **kwargs):
             if "greenhouse" in url:
@@ -368,9 +370,9 @@ class TestATS:
         assert "Lever" in sources
         assert "Ashby" in sources
 
-    @patch("job_radar.PORTAL_COMPANIES", ["testco"])
-    @patch("job_radar.time.sleep")
-    @patch("job_radar.requests.get")
+    @patch("sources.ats.PORTAL_COMPANIES", ["testco"])
+    @patch("sources.ats.time.sleep")
+    @patch("sources.ats.requests.get")
     def test_handles_all_errors(self, mock_get, mock_sleep):
         mock_get.side_effect = Exception("Network error")
         jobs = jr.search_ats_companies()

@@ -54,6 +54,7 @@ ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 sys.path.insert(0, str(REPO_ROOT))
 from config import CANDIDATE_NAME, JOB_DOCS, HOME_METRO_TERMS, HOME_CITY  # noqa: E402
 from portal_scanner import scan_all as portal_scan_all  # noqa: E402
+import db as data  # noqa: E402
 
 # ── KANBAN COLUMNS ────────────────────────────────────────────────────────────
 
@@ -106,139 +107,9 @@ def close_db(error):
 def init_db():
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     EXPORT_DIR.mkdir(parents=True, exist_ok=True)
-    db = sqlite3.connect(str(DB_PATH))
-    db.executescript("""
-        CREATE TABLE IF NOT EXISTS jobs (
-            id          TEXT PRIMARY KEY,
-            url         TEXT UNIQUE,
-            title       TEXT NOT NULL,
-            company     TEXT,
-            location    TEXT,
-            salary      TEXT,
-            source      TEXT,
-            tier        TEXT,
-            reason      TEXT,
-            description TEXT,
-            posted      TEXT,
-            report_file TEXT,
-            saved_at    TEXT NOT NULL,
-            status      TEXT NOT NULL DEFAULT 'New'
-        );
-
-        CREATE TABLE IF NOT EXISTS notes (
-            id         INTEGER PRIMARY KEY AUTOINCREMENT,
-            job_id     TEXT NOT NULL,
-            body       TEXT NOT NULL,
-            created_at TEXT NOT NULL,
-            FOREIGN KEY (job_id) REFERENCES jobs(id)
-        );
-
-        CREATE TABLE IF NOT EXISTS radar_comments (
-            id         INTEGER PRIMARY KEY AUTOINCREMENT,
-            job_id     TEXT NOT NULL,
-            body       TEXT NOT NULL,
-            created_at TEXT NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS radar_dismissed (
-            job_id     TEXT PRIMARY KEY,
-            dismissed_at TEXT NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS radar_reviewed (
-            filename    TEXT PRIMARY KEY,
-            reviewed_at TEXT NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS job_apply_urls (
-            job_id    TEXT PRIMARY KEY,
-            apply_url TEXT NOT NULL,
-            saved_at  TEXT NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS documents (
-            id                INTEGER PRIMARY KEY AUTOINCREMENT,
-            job_id            TEXT NOT NULL,
-            version           INTEGER NOT NULL DEFAULT 1,
-            resume_md         TEXT,
-            coverletter_md    TEXT,
-            generation_notes  TEXT,
-            generated_at      TEXT NOT NULL,
-            is_final          INTEGER NOT NULL DEFAULT 0,
-            FOREIGN KEY (job_id) REFERENCES jobs(id)
-        );
-
-        CREATE TABLE IF NOT EXISTS interview_contacts (
-            id         INTEGER PRIMARY KEY AUTOINCREMENT,
-            job_id     TEXT NOT NULL,
-            role       TEXT NOT NULL,
-            name       TEXT NOT NULL,
-            title      TEXT,
-            email      TEXT,
-            linkedin   TEXT,
-            created_at TEXT NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS interview_rounds (
-            id           INTEGER PRIMARY KEY AUTOINCREMENT,
-            job_id       TEXT NOT NULL,
-            round_num    INTEGER NOT NULL DEFAULT 1,
-            date         TEXT,
-            format       TEXT,
-            interviewers TEXT,
-            notes        TEXT,
-            thank_you    INTEGER NOT NULL DEFAULT 0,
-            created_at   TEXT NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS offer_details (
-            job_id    TEXT PRIMARY KEY,
-            base      TEXT,
-            bonus     TEXT,
-            equity    TEXT,
-            benefits  TEXT,
-            deadline  TEXT,
-            notes     TEXT,
-            updated_at TEXT NOT NULL
-        );
-
-        CREATE TABLE IF NOT EXISTS fit_analyses (
-            id           INTEGER PRIMARY KEY AUTOINCREMENT,
-            job_id       TEXT NOT NULL UNIQUE,
-            match_score  REAL,
-            matches_md   TEXT,
-            gaps_md      TEXT,
-            stories_md   TEXT,
-            summary      TEXT,
-            generated_at TEXT NOT NULL,
-            FOREIGN KEY (job_id) REFERENCES jobs(id)
-        );
-
-        CREATE TABLE IF NOT EXISTS portal_scans (
-            id           INTEGER PRIMARY KEY AUTOINCREMENT,
-            scanned_at   TEXT NOT NULL,
-            jobs_found   INTEGER NOT NULL DEFAULT 0,
-            companies_hit INTEGER NOT NULL DEFAULT 0
-        );
-
-        CREATE TABLE IF NOT EXISTS portal_results (
-            id           INTEGER PRIMARY KEY AUTOINCREMENT,
-            scan_id      INTEGER NOT NULL,
-            job_id       TEXT NOT NULL,
-            title        TEXT NOT NULL,
-            company      TEXT,
-            location     TEXT,
-            url          TEXT,
-            source       TEXT,
-            description  TEXT,
-            posted       TEXT,
-            FOREIGN KEY (scan_id) REFERENCES portal_scans(id)
-        );
-    """)
-    # Migrate old status names
-    db.execute("UPDATE jobs SET status='Interviewing' WHERE status IN ('Phone Screen','Interview')")
-    db.commit()
-    db.close()
+    conn = sqlite3.connect(str(DB_PATH))
+    data.init_schema(conn)
+    conn.close()
 
 # ── REPORT PARSER ─────────────────────────────────────────────────────────────
 
@@ -730,17 +601,7 @@ def _parse_stories_from_docs() -> list[dict]:
 @app.route("/")
 def board():
     db = get_db()
-    rows = db.execute("""
-        SELECT j.*,
-               COUNT(DISTINCT n.id)          AS note_count,
-               MAX(d.is_final)               AS has_final_docs,
-               MAX(d.id)                     AS latest_doc_id
-        FROM   jobs j
-        LEFT JOIN notes     n ON n.job_id = j.id
-        LEFT JOIN documents d ON d.job_id = j.id
-        GROUP BY j.id
-        ORDER BY j.saved_at DESC
-    """).fetchall()
+    rows = data.get_board_jobs(db)
 
     jobs_by_status = {s: [] for s in STATUSES}
     for row in rows:
@@ -760,25 +621,12 @@ def board():
 @app.route("/interviews")
 def interviews():
     db   = get_db()
-    rows = db.execute("""
-        SELECT j.*,
-               COUNT(DISTINCT ir.id) AS round_count,
-               MAX(ir.date)          AS latest_round_date
-        FROM   jobs j
-        LEFT JOIN interview_rounds ir ON ir.job_id = j.id
-        WHERE  j.status IN ('Interviewing','Offer')
-        GROUP BY j.id
-        ORDER BY j.saved_at DESC
-    """).fetchall()
+    rows = data.get_interview_jobs(db)
 
     jobs = []
     for row in rows:
         job = dict(row)
-        rec = db.execute(
-            "SELECT name FROM interview_contacts WHERE job_id=? AND role='recruiter' LIMIT 1",
-            (job["id"],)
-        ).fetchone()
-        job["recruiter_name"] = rec["name"] if rec else None
+        job["recruiter_name"] = data.get_recruiter_name(db, job["id"])
         jobs.append(job)
 
     return render_template(
@@ -809,12 +657,10 @@ def radar(date=None, slot=None):
     show_dismissed = request.args.get("dismissed") == "1"
 
     db             = get_db()
-    saved_ids      = {r["id"] for r in db.execute("SELECT id FROM jobs").fetchall()}
-    dismissed_ids  = {r["job_id"] for r in db.execute("SELECT job_id FROM radar_dismissed").fetchall()}
-    reviewed_files = {r["filename"] for r in db.execute("SELECT filename FROM radar_reviewed").fetchall()}
-    comments       = {r["job_id"]: r["body"] for r in db.execute(
-        "SELECT job_id, body FROM radar_comments ORDER BY created_at DESC"
-    ).fetchall()}
+    saved_ids      = data.get_all_job_ids(db)
+    dismissed_ids  = data.get_dismissed_ids(db)
+    reviewed_files = data.get_reviewed_filenames(db)
+    comments       = data.get_radar_comments(db)
 
     for job in jobs:
         job["is_saved"]     = job["job_id"] in saved_ids
@@ -840,10 +686,7 @@ def story_bank():
 
     # Collect fit analysis stories to show which jobs each story was surfaced for
     db = get_db()
-    analyses = db.execute(
-        "SELECT fa.job_id, fa.stories_md, j.title, j.company "
-        "FROM fit_analyses fa JOIN jobs j ON j.id = fa.job_id"
-    ).fetchall()
+    analyses = data.get_fit_analyses_with_stories(db)
 
     # For each doc story, find which fit analyses referenced it (by keyword match)
     for story in stories:
@@ -868,21 +711,15 @@ def story_bank():
 @app.route("/portals")
 def portals():
     db = get_db()
-    # Get latest scan
-    scan = db.execute(
-        "SELECT * FROM portal_scans ORDER BY scanned_at DESC LIMIT 1"
-    ).fetchone()
+    scan = data.get_latest_scan(db)
 
     jobs = []
     if scan:
         scan = dict(scan)
-        rows = db.execute(
-            "SELECT * FROM portal_results WHERE scan_id=? ORDER BY company, title",
-            (scan["id"],),
-        ).fetchall()
+        rows = data.get_scan_results(db, scan["id"])
 
-        saved_ids    = {r["id"] for r in db.execute("SELECT id FROM jobs").fetchall()}
-        dismissed_ids = {r["job_id"] for r in db.execute("SELECT job_id FROM radar_dismissed").fetchall()}
+        saved_ids     = data.get_all_job_ids(db)
+        dismissed_ids = data.get_dismissed_ids(db)
 
         remote_signals = ("remote", "work from home", "wfh", "distributed", "virtual")
         for row in rows:
@@ -918,24 +755,8 @@ def run_portal_scan():
         results = portal_scan_all()
         db = get_db()
         companies_hit = len(set(j["company"] for j in results))
-        db.execute(
-            "INSERT INTO portal_scans (scanned_at, jobs_found, companies_hit) VALUES (?,?,?)",
-            (datetime.now().isoformat(), len(results), companies_hit),
-        )
-        db.commit()
-        scan_id = db.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
-
-        for j in results:
-            db.execute("""
-                INSERT INTO portal_results
-                  (scan_id, job_id, title, company, location, url, source, description, posted)
-                VALUES (?,?,?,?,?,?,?,?,?)
-            """, (
-                scan_id, j["job_id"], j["title"], j["company"],
-                j["location"], j["url"], j["source"],
-                j.get("description", ""), j.get("posted", ""),
-            ))
-        db.commit()
+        scan_id = data.insert_scan(db, len(results), companies_hit)
+        data.insert_scan_results(db, scan_id, results)
         return jsonify({"ok": True, "found": len(results), "companies": companies_hit})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
@@ -943,25 +764,13 @@ def run_portal_scan():
 
 @app.route("/jobs/save", methods=["POST"])
 def save_job():
-    data   = request.json or {}
-    job_id = data.get("job_id")
+    payload = request.json or {}
+    job_id  = payload.get("job_id")
     if not job_id:
         return jsonify({"ok": False, "error": "missing job_id"}), 400
     db = get_db()
     try:
-        db.execute("""
-            INSERT OR IGNORE INTO jobs
-              (id, url, title, company, location, salary, source,
-               tier, reason, description, posted, report_file, saved_at, status)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'New')
-        """, (
-            job_id, data.get("url"), data.get("title"), data.get("company"),
-            data.get("location"), data.get("salary"), data.get("source"),
-            data.get("tier"), data.get("reason"), data.get("description"),
-            data.get("posted"), data.get("report_file"),
-            datetime.now().isoformat(),
-        ))
-        db.commit()
+        data.save_job(db, job_id, payload)
         return jsonify({"ok": True})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
@@ -973,11 +782,7 @@ def mark_radar_reviewed():
     if not filename:
         return jsonify({"ok": False, "error": "missing filename"}), 400
     db = get_db()
-    db.execute(
-        "INSERT OR IGNORE INTO radar_reviewed (filename, reviewed_at) VALUES (?,?)",
-        (filename, datetime.now().isoformat()),
-    )
-    db.commit()
+    data.mark_reviewed(db, filename)
     return jsonify({"ok": True})
 
 
@@ -986,13 +791,9 @@ def dismiss_radar_job(job_id):
     undo = (request.json or {}).get("undo", False)
     db   = get_db()
     if undo:
-        db.execute("DELETE FROM radar_dismissed WHERE job_id = ?", (job_id,))
+        data.undismiss_job(db, job_id)
     else:
-        db.execute(
-            "INSERT OR IGNORE INTO radar_dismissed (job_id, dismissed_at) VALUES (?,?)",
-            (job_id, datetime.now().isoformat()),
-        )
-    db.commit()
+        data.dismiss_job(db, job_id)
     return jsonify({"ok": True})
 
 
@@ -1000,81 +801,50 @@ def dismiss_radar_job(job_id):
 def save_radar_comment(job_id):
     body = (request.json or {}).get("body", "").strip()
     db   = get_db()
-    db.execute("DELETE FROM radar_comments WHERE job_id = ?", (job_id,))
-    if body:
-        db.execute(
-            "INSERT INTO radar_comments (job_id, body, created_at) VALUES (?,?,?)",
-            (job_id, body, datetime.now().isoformat()),
-        )
-    db.commit()
+    data.save_radar_comment(db, job_id, body)
     return jsonify({"ok": True})
 
 
 @app.route("/jobs/<job_id>/move", methods=["POST"])
 def move_job(job_id):
-    data   = request.json or {}
-    status = data.get("status") or request.form.get("status", "")
+    payload = request.json or {}
+    status  = payload.get("status") or request.form.get("status", "")
     if status not in STATUSES:
         return jsonify({"ok": False, "error": "invalid status"}), 400
     db = get_db()
-    db.execute("UPDATE jobs SET status=? WHERE id=?", (status, job_id))
-    db.commit()
+    data.move_job(db, job_id, status)
     return jsonify({"ok": True})
 
 
 @app.route("/jobs/<job_id>/notes", methods=["POST"])
 def add_note(job_id):
-    data = request.json or {}
-    body = (data.get("body") or request.form.get("body", "")).strip()
+    payload = request.json or {}
+    body = (payload.get("body") or request.form.get("body", "")).strip()
     if not body:
         return jsonify({"ok": False, "error": "empty note"}), 400
     db = get_db()
-    db.execute(
-        "INSERT INTO notes (job_id, body, created_at) VALUES (?,?,?)",
-        (job_id, body, datetime.now().isoformat()),
-    )
-    db.commit()
-    notes = db.execute(
-        "SELECT * FROM notes WHERE job_id=? ORDER BY created_at DESC", (job_id,)
-    ).fetchall()
+    data.add_note(db, job_id, body)
+    notes = data.get_notes(db, job_id)
     return jsonify({"ok": True, "notes": [dict(n) for n in notes]})
 
 
 @app.route("/jobs/<job_id>")
 def job_detail(job_id):
     db  = get_db()
-    job = db.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
+    job = data.get_job(db, job_id)
     if not job:
         return "Job not found", 404
-    notes = db.execute(
-        "SELECT * FROM notes WHERE job_id=? ORDER BY created_at DESC", (job_id,)
-    ).fetchall()
-    docs = db.execute(
-        "SELECT * FROM documents WHERE job_id=? ORDER BY version DESC", (job_id,)
-    ).fetchall()
-    apply_url_row = db.execute(
-        "SELECT apply_url FROM job_apply_urls WHERE job_id=?", (job_id,)
-    ).fetchone()
-    apply_url = apply_url_row["apply_url"] if apply_url_row else ""
-
-    fit_row = db.execute(
-        "SELECT * FROM fit_analyses WHERE job_id=?", (job_id,)
-    ).fetchone()
-    fit = dict(fit_row) if fit_row else None
+    notes     = data.get_notes(db, job_id)
+    docs      = data.get_documents(db, job_id)
+    apply_url = data.get_apply_url(db, job_id)
+    fit       = data.get_fit_analysis(db, job_id)
 
     contacts = offer = rounds = None
     if dict(job)["status"] in ("Interviewing", "Offer"):
-        contacts = [dict(r) for r in db.execute(
-            "SELECT * FROM interview_contacts WHERE job_id=? ORDER BY created_at", (job_id,)
-        ).fetchall()]
-        rounds = [dict(r) for r in db.execute(
-            "SELECT * FROM interview_rounds WHERE job_id=? ORDER BY round_num", (job_id,)
-        ).fetchall()]
+        contacts = data.get_contacts(db, job_id)
+        rounds   = data.get_rounds(db, job_id)
     if dict(job)["status"] == "Offer":
-        offer_row = db.execute(
-            "SELECT * FROM offer_details WHERE job_id=?", (job_id,)
-        ).fetchone()
-        offer = dict(offer_row) if offer_row else {}
+        offer = data.get_offer(db, job_id)
 
     return render_template(
         "job_detail.html",
@@ -1096,121 +866,78 @@ def save_apply_url(job_id):
     url = (request.json or {}).get("url", "").strip()
     if url and not url.lower().startswith(("http://", "https://", "mailto:")):
         return jsonify({"ok": False, "error": "URL must start with http://, https://, or mailto:"}), 400
-    db  = get_db()
+    db = get_db()
     if url:
-        db.execute(
-            "INSERT OR REPLACE INTO job_apply_urls (job_id, apply_url, saved_at) VALUES (?,?,?)",
-            (job_id, url, datetime.now().isoformat()),
-        )
+        data.save_apply_url(db, job_id, url)
     else:
-        db.execute("DELETE FROM job_apply_urls WHERE job_id=?", (job_id,))
-    db.commit()
+        data.delete_apply_url(db, job_id)
     return jsonify({"ok": True})
 
 
 @app.route("/jobs/<job_id>/contacts", methods=["POST"])
 def add_contact(job_id):
-    data = request.json or {}
-    name = data.get("name", "").strip()
+    payload = request.json or {}
+    name = payload.get("name", "").strip()
     if not name:
         return jsonify({"ok": False, "error": "name required"}), 400
     db = get_db()
-    db.execute(
-        "INSERT INTO interview_contacts (job_id,role,name,title,email,linkedin,created_at) VALUES (?,?,?,?,?,?,?)",
-        (job_id, data.get("role","interviewer"), name,
-         data.get("title",""), data.get("email",""), data.get("linkedin",""),
-         datetime.now().isoformat()),
-    )
-    db.commit()
-    new_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+    new_id = data.add_contact(db, job_id, payload)
     return jsonify({"ok": True, "id": new_id})
 
 
 @app.route("/jobs/<job_id>/contacts/<int:contact_id>", methods=["DELETE"])
 def delete_contact(job_id, contact_id):
     db = get_db()
-    db.execute("DELETE FROM interview_contacts WHERE id=? AND job_id=?", (contact_id, job_id))
-    db.commit()
+    data.delete_contact(db, contact_id, job_id)
     return jsonify({"ok": True})
 
 
 @app.route("/jobs/<job_id>/rounds", methods=["POST"])
 def add_round(job_id):
-    data = request.json or {}
-    db   = get_db()
-    count = db.execute(
-        "SELECT COUNT(*) FROM interview_rounds WHERE job_id=?", (job_id,)
-    ).fetchone()[0]
-    db.execute(
-        "INSERT INTO interview_rounds (job_id,round_num,date,format,interviewers,notes,thank_you,created_at) VALUES (?,?,?,?,?,?,?,?)",
-        (job_id, count + 1, data.get("date",""), data.get("format",""),
-         data.get("interviewers",""), data.get("notes",""),
-         1 if data.get("thank_you") else 0, datetime.now().isoformat()),
-    )
-    db.commit()
+    payload = request.json or {}
+    db = get_db()
+    data.add_round(db, job_id, payload)
     return jsonify({"ok": True})
 
 
 @app.route("/jobs/<job_id>/rounds/<int:round_id>", methods=["POST"])
 def update_round(job_id, round_id):
-    data = request.json or {}
-    db   = get_db()
-    db.execute(
-        "UPDATE interview_rounds SET date=?,format=?,interviewers=?,notes=?,thank_you=? WHERE id=? AND job_id=?",
-        (data.get("date",""), data.get("format",""), data.get("interviewers",""),
-         data.get("notes",""), 1 if data.get("thank_you") else 0,
-         round_id, job_id),
-    )
-    db.commit()
+    payload = request.json or {}
+    db = get_db()
+    data.update_round(db, round_id, job_id, payload)
     return jsonify({"ok": True})
 
 
 @app.route("/jobs/<job_id>/rounds/<int:round_id>", methods=["DELETE"])
 def delete_round(job_id, round_id):
     db = get_db()
-    db.execute("DELETE FROM interview_rounds WHERE id=? AND job_id=?", (round_id, job_id))
-    db.commit()
+    data.delete_round(db, round_id, job_id)
     return jsonify({"ok": True})
 
 
 @app.route("/jobs/<job_id>/offer", methods=["POST"])
 def save_offer(job_id):
-    data = request.json or {}
-    db   = get_db()
-    db.execute(
-        "INSERT OR REPLACE INTO offer_details (job_id,base,bonus,equity,benefits,deadline,notes,updated_at) VALUES (?,?,?,?,?,?,?,?)",
-        (job_id, data.get("base",""), data.get("bonus",""), data.get("equity",""),
-         data.get("benefits",""), data.get("deadline",""), data.get("notes",""),
-         datetime.now().isoformat()),
-    )
-    db.commit()
+    payload = request.json or {}
+    db = get_db()
+    data.save_offer(db, job_id, payload)
     return jsonify({"ok": True})
 
 
 @app.route("/jobs/<job_id>/generate", methods=["POST"])
 def generate(job_id):
     db  = get_db()
-    job = db.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
+    job = data.get_job(db, job_id)
     if not job:
         return jsonify({"ok": False, "error": "job not found"}), 404
 
-    data         = request.json or {}
-    instructions = data.get("instructions", "").strip()
+    payload      = request.json or {}
+    instructions = payload.get("instructions", "").strip()
 
     try:
         result = generate_documents(dict(job), instructions)
-        max_v  = db.execute(
-            "SELECT COALESCE(MAX(version),0) AS v FROM documents WHERE job_id=?", (job_id,)
-        ).fetchone()["v"]
-        db.execute("""
-            INSERT INTO documents
-              (job_id, version, resume_md, coverletter_md, generation_notes, generated_at)
-            VALUES (?,?,?,?,?,?)
-        """, (
-            job_id, max_v + 1,
-            result["resume"], result["cover_letter"],
-            instructions, datetime.now().isoformat(),
-        ))
+        max_v  = data.get_max_doc_version(db, job_id)
+        data.insert_document(db, job_id, max_v + 1,
+                             result["resume"], result["cover_letter"], instructions)
         db.execute("UPDATE jobs SET status='Drafting' WHERE id=? AND status IN ('New','Reviewing')", (job_id,))
         db.commit()
         doc_id = db.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
@@ -1222,26 +949,12 @@ def generate(job_id):
 @app.route("/jobs/<job_id>/fit-analysis", methods=["POST"])
 def run_fit_analysis(job_id):
     db  = get_db()
-    job = db.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
+    job = data.get_job(db, job_id)
     if not job:
         return jsonify({"ok": False, "error": "job not found"}), 404
     try:
         result = generate_fit_analysis(dict(job))
-        db.execute("""
-            INSERT OR REPLACE INTO fit_analyses
-              (job_id, match_score, matches_md, gaps_md, stories_md, summary, generated_at)
-            VALUES (?,?,?,?,?,?,?)
-        """, (
-            job_id, result["match_score"],
-            result["matches"], result["gaps"],
-            result["stories"], result["summary"],
-            datetime.now().isoformat(),
-        ))
-        db.execute(
-            "UPDATE jobs SET status='Reviewing' WHERE id=? AND status='New'",
-            (job_id,),
-        )
-        db.commit()
+        data.save_fit_analysis(db, job_id, result)
         return jsonify({"ok": True, "score": result["match_score"]})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
@@ -1250,16 +963,11 @@ def run_fit_analysis(job_id):
 @app.route("/jobs/<job_id>/documents/<int:doc_id>")
 def view_draft(job_id, doc_id):
     db  = get_db()
-    job = db.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
-    doc = db.execute(
-        "SELECT * FROM documents WHERE id=? AND job_id=?", (doc_id, job_id)
-    ).fetchone()
+    job = data.get_job(db, job_id)
+    doc = data.get_document(db, doc_id, job_id)
     if not job or not doc:
         return "Not found", 404
-    all_docs = db.execute(
-        "SELECT id, version, generated_at, is_final FROM documents WHERE job_id=? ORDER BY version DESC",
-        (job_id,),
-    ).fetchall()
+    all_docs = data.get_all_doc_versions(db, job_id)
     return render_template(
         "draft.html",
         job=dict(job),
@@ -1271,28 +979,20 @@ def view_draft(job_id, doc_id):
 
 @app.route("/jobs/<job_id>/documents/<int:doc_id>/save", methods=["POST"])
 def save_document(job_id, doc_id):
-    data       = request.json or {}
-    resume_md  = data.get("resume_md", "")
-    cl_md      = data.get("coverletter_md", "")
-    mark_final = bool(data.get("mark_final"))
-    db         = get_db()
-    db.execute(
-        "UPDATE documents SET resume_md=?, coverletter_md=?, is_final=? WHERE id=? AND job_id=?",
-        (resume_md, cl_md, 1 if mark_final else 0, doc_id, job_id),
-    )
-    if mark_final:
-        db.execute("UPDATE jobs SET status='Ready' WHERE id=?", (job_id,))
-    db.commit()
+    payload    = request.json or {}
+    resume_md  = payload.get("resume_md", "")
+    cl_md      = payload.get("coverletter_md", "")
+    mark_final = bool(payload.get("mark_final"))
+    db = get_db()
+    data.save_document(db, doc_id, job_id, resume_md, cl_md, mark_final)
     return jsonify({"ok": True})
 
 
 @app.route("/jobs/<job_id>/documents/<int:doc_id>/download/<doc_type>")
 def download_doc(job_id, doc_id, doc_type):
     db  = get_db()
-    job = db.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()
-    doc = db.execute(
-        "SELECT * FROM documents WHERE id=? AND job_id=?", (doc_id, job_id)
-    ).fetchone()
+    job = data.get_job(db, job_id)
+    doc = data.get_document(db, doc_id, job_id)
     if not job or not doc:
         return "Not found", 404
 
@@ -1322,10 +1022,7 @@ def download_doc(job_id, doc_id, doc_type):
 @app.route("/jobs/<job_id>/delete", methods=["POST"])
 def delete_job(job_id):
     db = get_db()
-    db.execute("DELETE FROM notes     WHERE job_id=?", (job_id,))
-    db.execute("DELETE FROM documents WHERE job_id=?", (job_id,))
-    db.execute("DELETE FROM jobs      WHERE id=?",     (job_id,))
-    db.commit()
+    data.delete_job(db, job_id)
     return jsonify({"ok": True})
 
 

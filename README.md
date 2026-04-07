@@ -108,12 +108,37 @@ job-search-profile/
 │   └── static/
 │       ├── style.css                  # dark mode UI
 │       └── app.js
+├── tests/
+│   ├── conftest.py                    # shared fixtures, mock config
+│   ├── test_job_radar.py              # filter, dedup, dataclass tests
+│   ├── test_source_parsers.py         # fixture-based API response parsing
+│   ├── test_dashboard.py              # Flask route smoke tests
+│   ├── test_report_parser.py          # radar report markdown parsing
+│   ├── test_startup.py                # config validation tests
+│   ├── test_log.py                    # logging helper tests
+│   ├── test_telegram_bot.py           # bot token redaction tests
+│   └── fixtures/                      # JSON/HTML/XML API response fixtures
 └── scripts/
-    ├── job_radar.py                   # automated search, filter, rate, email
+    ├── job_radar.py                   # orchestrator — main(), seen file, dedup
+    ├── models.py                      # Job dataclass
+    ├── filters.py                     # 12 filter functions + regex constants
+    ├── rating.py                      # Claude AI job rating + salary extraction
+    ├── report.py                      # report building, debug log, email
+    ├── normalize.py                   # shared cleanup: HTML strip, salary format
+    ├── sources/                       # one module per source or source group
+    │   ├── adzuna.py                  # Adzuna REST API
+    │   ├── brave.py                   # Brave web search
+    │   ├── tavily.py                  # Tavily web search + company extraction
+    │   ├── linkedin.py                # LinkedIn HTML scraping + enrichment
+    │   ├── remote_boards.py           # Remotive, WWR, Himalayas, RemoteOK, Jobicy
+    │   ├── jsearch.py                 # JSearch / RapidAPI
+    │   └── ats.py                     # Greenhouse, Lever, Ashby direct APIs
     ├── dashboard.py                   # Flask dashboard — kanban, radar, doc gen
+    ├── db.py                          # SQLite access layer (named query functions)
     ├── portal_scanner.py              # on-demand ATS career page scanner
     ├── telegram_bot.py                # Telegram bot with multi-model AI chat
-    └── test_linkedin.py               # standalone LinkedIn scrape test + email
+    ├── startup.py                     # env/config validation at boot
+    └── log.py                         # log() helper with [source] prefix
 ```
 
 ---
@@ -224,3 +249,26 @@ python scripts/dashboard.py
 
 **Profile docs:**
 Most setup time is writing your `docs/` files. Template files showing the expected structure for each doc type are in `docs/templates/`. Once those are solid, Claude can generate a tailored resume in under 2 minutes.
+
+---
+
+## Changelog
+
+### v1.4.0 — Internal cleanup (2026-04-07)
+- Refactored `job_radar.py` from 1842 lines into focused modules: `models.py`, `filters.py`, `rating.py`, `report.py`, `normalize.py`, and 7 source modules under `sources/`
+- Extracted ~70 inline SQL queries from `dashboard.py` into `db.py` with named functions
+- Deduplicated salary formatting, keyword matching, and HTML cleanup into shared `normalize.py`
+- 125 tests passing
+
+### v1.3.0 — Foundation hardening (2026-04-07)
+- Added `scripts/log.py` — `log()` helper with `[source]` prefix and `--verbose` flag
+- Added `scripts/startup.py` — env/config validation with clear error messages at boot
+- Added 13 source parser fixtures + 26 tests (125 total)
+
+### v1.2.0 — Security audit fixes (2026-04-07)
+- Fixed Adzuna env var mismatch, XSS via innerHTML, URL validation, Flask debug mode
+- Added Telegram token redaction, lazy provider init, pinned requirements.txt
+- Added test suite (81 tests)
+
+### v1.1.0 — Feature release (2026-04-06)
+- Fit Analysis, Interview Story Bank, Portal Scanner, ATS keyword optimization

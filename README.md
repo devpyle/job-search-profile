@@ -69,6 +69,16 @@ Built and maintained using [Claude Code](https://claude.ai/code). Released under
 - **Filter audit trail** — every filtered job is logged with the reason it was dropped
   - Collapsible "Filtered" section on each radar report page shows what was removed and why
   - Grouped by filter (wrong title, non-US, staffing, etc.) so you can spot patterns
+- **Company memory** — tracks dismiss/reject/boost signals per company across runs
+  - Dismissing radar jobs or rejecting board jobs automatically records a signal for that company
+  - Boost button on radar cards for companies you want to prioritize
+  - Signal badges show on radar cards (e.g. "3x dismissed", "rejected before", "boosted")
+- **Application completeness gate** — prevents moving jobs to Ready without requirements met
+  - Requires a final document (resume/cover letter marked final) and an apply URL
+  - Server-side enforcement with clear error messages
+- **Stale job alerts** — highlights jobs stuck in a column too long
+  - Per-status thresholds (New=3d, Reviewing=5d, Drafting=7d, Ready=3d, Applied=14d, Interviewing=7d)
+  - Orange "stale" badge and border on board cards
 - **SQLite database** — all jobs, notes, documents, comments, dismissed state, and application URLs persist locally
 
 **Telegram Bot** (`scripts/telegram_bot.py`, optional)
@@ -261,6 +271,12 @@ Most setup time is writing your `docs/` files. Template files showing the expect
 ---
 
 ## Changelog
+
+### v1.6.0 — Workflow wins (2026-04-07)
+- Company memory: dismiss/reject/boost signals per company with radar badges
+- Application completeness gate: blocks Ready status without final doc + apply URL
+- Stale job alerts: orange badges on board cards past per-status time thresholds
+- 139 tests passing
 
 ### v1.5.0 — Operational visibility (2026-04-07)
 - Source health tracking: per-source job counts, errors, latency, and trend arrows on a new Health dashboard tab

@@ -76,10 +76,18 @@ document.querySelectorAll(".sortable-list").forEach(el => {
         headers: {"Content-Type": "application/json"},
         body:    JSON.stringify({ status }),
       })
-      .then(r => r.json())
+      .then(r => r.json().then(d => ({...d, status: r.status})))
       .then(d => {
-        if (!d.ok) { alert("Move failed: " + d.error); location.reload(); }
-        else { updateBadges(); }
+        if (!d.ok) {
+          if (d.missing) {
+            alert("Cannot move to Ready.\n\nMissing:\n- " + d.missing.join("\n- "));
+          } else {
+            alert("Move failed: " + d.error);
+          }
+          location.reload();
+        } else {
+          updateBadges();
+        }
       });
     }
   });

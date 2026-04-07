@@ -304,3 +304,124 @@ def test_health_filter_stats(client, db):
     resp = client.get("/health")
     assert resp.status_code == 200
     assert b"Wrong Title" in resp.data
+
+
+# ── Stale alerts ─────────────────────────────────────────────────────────────
+
+
+def test_move_job_sets_status_changed_at(client, db):
+    from tests.conftest import _insert_job
+    _insert_job(db, job_id="stale1")
+    resp = client.post("/jobs/stale1/move", json={"status": "Reviewing"})
+    assert resp.json["ok"]
+    row = db.execute("SELECT status_changed_at FROM jobs WHERE id='stale1'").fetchone()
+    assert row["status_changed_at"] is not None
+
+
+def test_stale_detection(client, db):
+    from datetime import datetime, timedelta
+    from tests.conftest import _insert_job
+    old = (datetime.now() - timedelta(days=10)).isoformat()
+    _insert_job(db, job_id="stale2", status="Reviewing", status_changed_at=old)
+    resp = client.get("/")
+    assert resp.status_code == 200
+    assert b"stale" in resp.data
+
+
+def test_new_job_has_status_changed_at(client, db):
+    resp = client.post("/jobs/save", json={
+        "job_id": "new1", "title": "Test", "company": "Acme",
+        "url": "https://example.com/new1",
+    })
+    assert resp.json["ok"]
+    row = db.execute("SELECT status_changed_at FROM jobs WHERE id='new1'").fetchone()
+    assert row["status_changed_at"] is not None
+
+
+# ── Company memory ───────────────────────────────────────────────────────────
+
+
+def test_company_signals_table_exists(db):
+    tables = {row[0] for row in db.execute(
+        "SELECT name FROM sqlite_master WHERE type='table'"
+    ).fetchall()}
+    assert "company_signals" in tables
+
+
+def test_reject_increments_company_signal(client, db):
+    from tests.conftest import _insert_job
+    _insert_job(db, job_id="rej1", company="Acme Corp")
+    client.post("/jobs/rej1/move", json={"status": "Rejected"})
+    row = db.execute("SELECT * FROM company_signals WHERE company_lower='acme corp'").fetchone()
+    assert row is not None
+    assert row["signal"] == "reject"
+    assert row["count"] == 1
+
+
+def test_boost_company(client, db):
+    resp = client.post("/company/boost", json={"company": "Great Corp"})
+    assert resp.json["ok"]
+    row = db.execute("SELECT * FROM company_signals WHERE company_lower='great corp'").fetchone()
+    assert row["signal"] == "boost"
+
+
+def test_company_signal_case_insensitive(client, db):
+    from tests.conftest import _insert_job
+    _insert_job(db, job_id="ci1", company="Acme Corp")
+    _insert_job(db, job_id="ci2", company="ACME CORP", url="https://example.com/ci2")
+    client.post("/jobs/ci1/move", json={"status": "Rejected"})
+    client.post("/jobs/ci2/move", json={"status": "Passed"})
+    row = db.execute("SELECT * FROM company_signals WHERE company_lower='acme corp'").fetchone()
+    assert row["count"] == 2
+
+
+# ── Completeness checks ─────────────────────────────────────────────────────
+
+
+def test_move_to_ready_blocked_no_docs(client, db):
+    from tests.conftest import _insert_job
+    _insert_job(db, job_id="gate1", status="Drafting")
+    resp = client.post("/jobs/gate1/move", json={"status": "Ready"})
+    assert resp.status_code == 400
+    assert "missing" in resp.json
+    assert len(resp.json["missing"]) == 2  # no docs, no URL
+
+
+def test_move_to_ready_blocked_no_url(client, db):
+    from datetime import datetime
+    from tests.conftest import _insert_job
+    _insert_job(db, job_id="gate2", status="Drafting")
+    db.execute(
+        "INSERT INTO documents (job_id, version, resume_md, coverletter_md, generated_at, is_final) VALUES (?,?,?,?,?,?)",
+        ("gate2", 1, "resume", "cl", datetime.now().isoformat(), 1),
+    )
+    db.commit()
+    resp = client.post("/jobs/gate2/move", json={"status": "Ready"})
+    assert resp.status_code == 400
+    assert any("Apply URL" in m for m in resp.json["missing"])
+
+
+def test_move_to_ready_success(client, db):
+    from datetime import datetime
+    from tests.conftest import _insert_job
+    _insert_job(db, job_id="gate3", status="Drafting")
+    db.execute(
+        "INSERT INTO documents (job_id, version, resume_md, coverletter_md, generated_at, is_final) VALUES (?,?,?,?,?,?)",
+        ("gate3", 1, "resume", "cl", datetime.now().isoformat(), 1),
+    )
+    db.execute(
+        "INSERT INTO job_apply_urls (job_id, apply_url, saved_at) VALUES (?,?,?)",
+        ("gate3", "https://example.com/apply", datetime.now().isoformat()),
+    )
+    db.commit()
+    resp = client.post("/jobs/gate3/move", json={"status": "Ready"})
+    assert resp.status_code == 200
+    assert resp.json["ok"]
+
+
+def test_move_past_ready_not_blocked(client, db):
+    from tests.conftest import _insert_job
+    _insert_job(db, job_id="gate4", status="Ready")
+    resp = client.post("/jobs/gate4/move", json={"status": "Applied"})
+    assert resp.status_code == 200
+    assert resp.json["ok"]

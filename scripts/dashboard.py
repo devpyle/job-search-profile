@@ -602,11 +602,14 @@ def _parse_stories_from_docs() -> list[dict]:
 def board():
     db = get_db()
     rows = data.get_board_jobs(db)
+    stale_ids = data.get_stale_job_ids(db)
 
     jobs_by_status = {s: [] for s in STATUSES}
     for row in rows:
         status = row["status"] if row["status"] in STATUSES else "New"
-        jobs_by_status[status].append(dict(row))
+        job = dict(row)
+        job["is_stale"] = row["id"] in stale_ids
+        jobs_by_status[status].append(job)
 
     return render_template(
         "board.html",
@@ -662,10 +665,14 @@ def radar(date=None, slot=None):
     reviewed_files = data.get_reviewed_filenames(db)
     comments       = data.get_radar_comments(db)
 
+    company_signals = data.get_company_signals(db)
+
     for job in jobs:
         job["is_saved"]     = job["job_id"] in saved_ids
         job["is_dismissed"] = job["job_id"] in dismissed_ids
         job["comment"]      = comments.get(job["job_id"], "")
+        key = (job.get("company") or "").lower().strip()
+        job["company_signal"] = company_signals.get(key)
 
     if not show_dismissed:
         jobs = [j for j in jobs if not j["is_dismissed"]]
@@ -826,12 +833,16 @@ def mark_radar_reviewed():
 
 @app.route("/radar/dismiss/<job_id>", methods=["POST"])
 def dismiss_radar_job(job_id):
-    undo = (request.json or {}).get("undo", False)
-    db   = get_db()
+    payload = request.json or {}
+    undo    = payload.get("undo", False)
+    company = payload.get("company", "")
+    db = get_db()
     if undo:
         data.undismiss_job(db, job_id)
     else:
         data.dismiss_job(db, job_id)
+        if company:
+            data.increment_company_signal(db, company, "dismiss")
     return jsonify({"ok": True})
 
 
@@ -843,6 +854,16 @@ def save_radar_comment(job_id):
     return jsonify({"ok": True})
 
 
+@app.route("/company/boost", methods=["POST"])
+def boost_company():
+    company = (request.json or {}).get("company", "").strip()
+    if not company:
+        return jsonify({"ok": False, "error": "missing company"}), 400
+    db = get_db()
+    data.set_company_boost(db, company)
+    return jsonify({"ok": True})
+
+
 @app.route("/jobs/<job_id>/move", methods=["POST"])
 def move_job(job_id):
     payload = request.json or {}
@@ -850,6 +871,14 @@ def move_job(job_id):
     if status not in STATUSES:
         return jsonify({"ok": False, "error": "invalid status"}), 400
     db = get_db()
+    if status == "Ready":
+        check = data.check_ready_requirements(db, job_id)
+        if not check["ok"]:
+            return jsonify({"ok": False, "error": "Missing requirements", "missing": check["missing"]}), 400
+    if status in ("Rejected", "Passed"):
+        job = data.get_job(db, job_id)
+        if job and job["company"]:
+            data.increment_company_signal(db, job["company"], "reject")
     data.move_job(db, job_id, status)
     return jsonify({"ok": True})
 

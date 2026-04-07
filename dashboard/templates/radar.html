@@ -59,6 +59,15 @@
           <div class="radar-title">{{ job.title }}</div>
           <div class="radar-meta">
             <strong>{{ job.company or '—' }}</strong>
+            {% if job.company_signal %}
+              {% if job.company_signal.signal == 'boost' %}
+              <span class="signal-badge boost">boosted</span>
+              {% elif job.company_signal.signal == 'dismiss' %}
+              <span class="signal-badge dimmed">{{ job.company_signal.count }}x dismissed</span>
+              {% elif job.company_signal.signal == 'reject' %}
+              <span class="signal-badge warn">rejected before</span>
+              {% endif %}
+            {% endif %}
             {% if job.location %} · {{ job.location }}{% endif %}
             {% if job.salary and job.salary != 'Not listed' %} · {{ job.salary }}{% endif %}
             {% if job.posted %} · {{ job.posted }}{% endif %}
@@ -81,7 +90,10 @@
           {% if job.is_dismissed %}
           <button class="btn-sm undismiss-btn" onclick="undismissJob('{{ job.job_id }}', this)">↩ Restore</button>
           {% else %}
-          <button class="btn-sm dismiss-btn" title="Dismiss" onclick="dismissJob('{{ job.job_id }}', this)">✕</button>
+          <button class="btn-sm dismiss-btn" title="Dismiss" onclick="dismissJob('{{ job.job_id }}', '{{ job.company|e }}', this)">✕</button>
+          {% if job.company %}
+          <button class="btn-sm boost-btn" title="Boost company" onclick="boostCompany('{{ job.company|e }}', this)">★</button>
+          {% endif %}
           {% endif %}
         </div>
       </div>
@@ -218,17 +230,31 @@ function saveComment(jobId, btn) {
   });
 }
 
-function dismissJob(jobId, btn) {
+function dismissJob(jobId, company, btn) {
   fetch(`/radar/dismiss/${jobId}`, {
     method: "POST",
     headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({ undo: false }),
+    body: JSON.stringify({ undo: false, company: company }),
   }).then(r => r.json()).then(d => {
     if (d.ok) {
       const card = btn.closest(".radar-card");
       card.style.transition = "opacity 0.2s";
       card.style.opacity    = "0";
       setTimeout(() => card.remove(), 200);
+    }
+  });
+}
+
+function boostCompany(company, btn) {
+  fetch("/company/boost", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ company: company }),
+  }).then(r => r.json()).then(d => {
+    if (d.ok) {
+      btn.textContent = "★ Boosted";
+      btn.disabled = true;
+      showToast("Company boosted: " + company);
     }
   });
 }

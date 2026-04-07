@@ -162,12 +162,25 @@ SCHEMA_SQL = """
         created_at  TEXT NOT NULL,
         FOREIGN KEY (run_id) REFERENCES radar_runs(id)
     );
+
+    CREATE TABLE IF NOT EXISTS company_signals (
+        company_lower TEXT PRIMARY KEY,
+        signal        TEXT NOT NULL DEFAULT 'dismiss',
+        count         INTEGER NOT NULL DEFAULT 0,
+        updated_at    TEXT NOT NULL
+    );
 """
 
 
 def init_schema(conn):
     conn.executescript(SCHEMA_SQL)
     conn.execute("UPDATE jobs SET status='Interviewing' WHERE status IN ('Phone Screen','Interview')")
+    # Additive migrations
+    try:
+        conn.execute("ALTER TABLE jobs ADD COLUMN status_changed_at TEXT")
+    except Exception:
+        pass  # column already exists
+    conn.execute("UPDATE jobs SET status_changed_at = saved_at WHERE status_changed_at IS NULL")
     conn.commit()
 
 
@@ -205,23 +218,25 @@ def get_job(db, job_id):
 
 
 def save_job(db, job_id, data):
+    now = datetime.now().isoformat()
     db.execute("""
         INSERT OR IGNORE INTO jobs
           (id, url, title, company, location, salary, source,
-           tier, reason, description, posted, report_file, saved_at, status)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'New')
+           tier, reason, description, posted, report_file, saved_at, status, status_changed_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'New',?)
     """, (
         job_id, data.get("url"), data.get("title"), data.get("company"),
         data.get("location"), data.get("salary"), data.get("source"),
         data.get("tier"), data.get("reason"), data.get("description"),
         data.get("posted"), data.get("report_file"),
-        datetime.now().isoformat(),
+        now, now,
     ))
     db.commit()
 
 
 def move_job(db, job_id, status):
-    db.execute("UPDATE jobs SET status=? WHERE id=?", (status, job_id))
+    db.execute("UPDATE jobs SET status=?, status_changed_at=? WHERE id=?",
+               (status, datetime.now().isoformat(), job_id))
     db.commit()
 
 
@@ -234,6 +249,54 @@ def delete_job(db, job_id):
 
 def get_all_job_ids(db):
     return {r["id"] for r in db.execute("SELECT id FROM jobs").fetchall()}
+
+
+def check_ready_requirements(db, job_id):
+    """Check if a job meets requirements to move to Ready status."""
+    missing = []
+    has_final = db.execute(
+        "SELECT 1 FROM documents WHERE job_id=? AND is_final=1 LIMIT 1", (job_id,)
+    ).fetchone()
+    if not has_final:
+        missing.append("Final document (mark a resume/cover letter as final)")
+    has_url = db.execute(
+        "SELECT 1 FROM job_apply_urls WHERE job_id=?", (job_id,)
+    ).fetchone()
+    if not has_url:
+        missing.append("Apply URL")
+    return {"ok": len(missing) == 0, "missing": missing}
+
+
+STALE_THRESHOLDS = {
+    "New": 3, "Reviewing": 5, "Drafting": 7, "Ready": 3,
+    "Applied": 14, "Interviewing": 7,
+}
+
+
+def get_stale_job_ids(db, thresholds=None):
+    """Return set of job IDs that have been in their current status too long."""
+    if thresholds is None:
+        thresholds = STALE_THRESHOLDS
+    statuses = list(thresholds.keys())
+    placeholders = ",".join("?" * len(statuses))
+    rows = db.execute(
+        f"SELECT id, status, status_changed_at FROM jobs WHERE status IN ({placeholders})",
+        statuses,
+    ).fetchall()
+    now = datetime.now()
+    stale = set()
+    for row in rows:
+        changed = row["status_changed_at"]
+        if not changed:
+            continue
+        try:
+            changed_dt = datetime.fromisoformat(changed)
+        except (ValueError, TypeError):
+            continue
+        days = (now - changed_dt).days
+        if days >= thresholds.get(row["status"], 999):
+            stale.add(row["id"])
+    return stale
 
 
 # ── Notes ─────────────────────────────────────────────────────────────────────
@@ -293,7 +356,13 @@ def save_document(db, doc_id, job_id, resume_md, cl_md, is_final):
         (resume_md, cl_md, 1 if is_final else 0, doc_id, job_id),
     )
     if is_final:
-        db.execute("UPDATE jobs SET status='Ready' WHERE id=?", (job_id,))
+        # Only auto-move to Ready if apply URL exists
+        has_url = db.execute(
+            "SELECT 1 FROM job_apply_urls WHERE job_id=?", (job_id,)
+        ).fetchone()
+        if has_url:
+            now = datetime.now().isoformat()
+            db.execute("UPDATE jobs SET status='Ready', status_changed_at=? WHERE id=?", (now, job_id))
     db.commit()
 
 
@@ -612,3 +681,45 @@ def get_filter_stats(db, run_id):
         "SELECT filter_name, COUNT(*) as count FROM filtered_jobs WHERE run_id=? GROUP BY filter_name ORDER BY count DESC",
         (run_id,),
     ).fetchall()
+
+
+# ── Company Signals ──────────────────────────────────────────────────────────
+
+def increment_company_signal(db, company, signal):
+    """Increment dismiss/reject count for a company."""
+    key = (company or "").lower().strip()
+    if not key:
+        return
+    now = datetime.now().isoformat()
+    db.execute("""
+        INSERT INTO company_signals (company_lower, signal, count, updated_at)
+        VALUES (?, ?, 1, ?)
+        ON CONFLICT(company_lower) DO UPDATE SET
+            signal = excluded.signal,
+            count = count + 1,
+            updated_at = excluded.updated_at
+    """, (key, signal, now))
+    db.commit()
+
+
+def set_company_boost(db, company):
+    """Explicitly boost a company (resets count to 1 with boost signal)."""
+    key = (company or "").lower().strip()
+    if not key:
+        return
+    now = datetime.now().isoformat()
+    db.execute("""
+        INSERT INTO company_signals (company_lower, signal, count, updated_at)
+        VALUES (?, 'boost', 1, ?)
+        ON CONFLICT(company_lower) DO UPDATE SET
+            signal = 'boost',
+            count = 1,
+            updated_at = excluded.updated_at
+    """, (key, now))
+    db.commit()
+
+
+def get_company_signals(db):
+    """Return dict of {company_lower: {signal, count}}."""
+    rows = db.execute("SELECT * FROM company_signals").fetchall()
+    return {r["company_lower"]: {"signal": r["signal"], "count": r["count"]} for r in rows}

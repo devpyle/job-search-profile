@@ -110,16 +110,18 @@ def db(dashboard_app, tmp_path):
 
 
 def _insert_job(db, job_id="test123", title="Test PO", company="Acme",
-                status="New", url="https://example.com/job/1"):
+                status="New", url="https://example.com/job/1",
+                status_changed_at=None):
     """Helper to insert a test job."""
     from datetime import datetime
+    now = datetime.now().isoformat()
     db.execute(
         """INSERT INTO jobs (id, url, title, company, location, salary, source,
-           tier, reason, description, posted, report_file, saved_at, status)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+           tier, reason, description, posted, report_file, saved_at, status, status_changed_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (job_id, url, title, company, "Remote", "$100k", "test",
          "Apply Now", "Good fit", "Job description", "2026-04-01",
-         "2026-04-01-am.md", datetime.now().isoformat(), status),
+         "2026-04-01-am.md", now, status, status_changed_at or now),
     )
     db.commit()
     return job_id

@@ -1,5 +1,5 @@
 {% set color = status_colors[job.status] if job.status in status_colors else '#94a3b8' %}
-<div class="job-card" data-job-id="{{ job.id }}" data-status="{{ job.status }}">
+<div class="job-card{% if job.is_stale %} stale{% endif %}" data-job-id="{{ job.id }}" data-status="{{ job.status }}">
   <div class="status-bar" style="background: {{ color }}"></div>
   <div class="card-body">
     <div class="card-title">{{ job.title }}</div>
@@ -21,6 +21,9 @@
         {% endif %}
         {% if job.has_final_docs %}
         <span class="doc-badge" title="Docs ready">📄</span>
+        {% endif %}
+        {% if job.is_stale %}
+        <span class="stale-badge" title="Stale — needs attention">stale</span>
         {% endif %}
         {% if job.status == 'Reviewing' %}
         <span class="checklist-badge" title="Open to see reviewing checklist">☑</span>

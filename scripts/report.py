@@ -74,41 +74,60 @@ def write_debug_log(jobs: list[Job], raw_counts: dict):
 
 
 def build_report(jobs: list[Job], seen: dict, now: datetime,
-                 dedup_keys_fn=None) -> tuple[str, list[Job], dict]:
+                 dedup_keys_fn=None) -> tuple[str, list[Job], dict, list[dict]]:
     # dedup_keys_fn is passed in by caller to avoid circular import
     new_jobs: list[Job] = []
     new_seen = dict(seen)
     today_str = date.today().isoformat()
+    filtered: list[dict] = []
+
+    def _reject(job, filter_name):
+        filtered.append({
+            "title": job.title, "company": job.company,
+            "url": job.url, "source": job.source,
+            "filter_name": filter_name,
+        })
 
     within_run_seen: set[str] = set()
 
     for job in jobs:
         keys = dedup_keys_fn(job)
         if any(k in new_seen for k in keys):
-            continue
+            continue  # dedup — don't log
         if any(k in within_run_seen for k in keys):
-            continue
+            continue  # dedup — don't log
         if is_category_page(job.title, job.url, job.description):
+            _reject(job, "category_page")
             continue
         if job.url and "virtualvocations.com" in job.url.lower():
+            _reject(job, "virtualvocations")
             continue
         if job.company and job.company.lower().strip() in BLOCKED_COMPANIES:
+            _reject(job, "blocked_company")
             continue
         if is_wrong_title(job.title):
+            _reject(job, "wrong_title")
             continue
         if is_bad_scrape(job):
+            _reject(job, "bad_scrape")
             continue
         if REQUIRE_US_LOCATION and is_non_us_location(job):
+            _reject(job, "non_us_location")
             continue
         if is_onsite_non_local(job):
+            _reject(job, "onsite_non_local")
             continue
         if is_staffing(job.title, job.company, job.description):
+            _reject(job, "staffing")
             continue
         if is_below_salary_floor(job):
+            _reject(job, "below_salary_floor")
             continue
         if is_closed_listing(job.description):
+            _reject(job, "closed_listing")
             continue
         if is_broken_url(job.url):
+            _reject(job, "broken_url")
             continue
         new_jobs.append(job)
         for k in keys:
@@ -245,7 +264,7 @@ def build_report(jobs: list[Job], seen: dict, now: datetime,
                 if job.url:
                     lines.append(f"   {job.url}")
 
-    return "\n".join(lines), new_jobs, new_seen
+    return "\n".join(lines), new_jobs, new_seen, filtered
 
 
 def send_email(subject: str, body: str, attachment: Path | None = None):

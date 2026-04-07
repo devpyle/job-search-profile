@@ -1008,3 +1008,58 @@ main { padding: 1.5rem; }
   background: rgba(59,130,246,0.12); color: #60a5fa;
   border-radius: 4px;
 }
+
+/* ── Health page ─────────────────────────────────────────────────────────── */
+.health-summary {
+  display: flex; gap: 1.5rem; flex-wrap: wrap;
+  margin-bottom: 1.5rem; padding: 1rem;
+  background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
+}
+.health-stat { display: flex; flex-direction: column; }
+.health-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.health-value { font-size: 1.2rem; font-weight: 700; color: var(--fg); }
+
+.health-table {
+  width: 100%; border-collapse: collapse; margin-bottom: 1.5rem;
+  font-size: 13px;
+}
+.health-table th {
+  text-align: left; padding: 0.5rem 0.75rem;
+  border-bottom: 2px solid var(--border); color: var(--muted);
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em;
+}
+.health-table td {
+  padding: 0.45rem 0.75rem; border-bottom: 1px solid var(--border); color: var(--fg);
+}
+.text-error { color: #ef4444; font-weight: 600; }
+.text-warn  { color: #f59e0b; }
+.trend-up   { color: #22c55e; }
+.trend-down { color: #ef4444; }
+.trend-flat { color: var(--muted); }
+.trend-new  { color: #3b82f6; font-size: 10px; font-weight: 700; }
+
+.empty-state {
+  text-align: center; padding: 3rem; color: var(--muted);
+}
+.empty-state code {
+  background: var(--surface2); padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 12px;
+}
+
+/* ── Radar filtered section ─────────────────────────────────────────────── */
+.filtered-section {
+  margin-top: 2rem; padding: 1rem;
+  background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
+}
+.filtered-section summary {
+  cursor: pointer; font-size: 13px; color: var(--muted); font-weight: 600;
+}
+.filtered-group { margin-top: 0.75rem; }
+.filtered-group-label {
+  font-size: 12px; color: var(--muted); text-transform: uppercase;
+  letter-spacing: 0.04em; margin-bottom: 0.3rem; padding-bottom: 0.2rem;
+  border-bottom: 1px solid var(--border);
+}
+.filtered-item {
+  font-size: 12px; color: var(--subtle); padding: 0.15rem 0;
+}
+.filtered-item .source { color: var(--muted); }

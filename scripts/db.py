@@ -129,6 +129,39 @@ SCHEMA_SQL = """
         posted       TEXT,
         FOREIGN KEY (scan_id) REFERENCES portal_scans(id)
     );
+
+    CREATE TABLE IF NOT EXISTS radar_runs (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        started_at   TEXT NOT NULL,
+        finished_at  TEXT,
+        total_raw    INTEGER NOT NULL DEFAULT 0,
+        total_new    INTEGER NOT NULL DEFAULT 0,
+        total_rated  INTEGER NOT NULL DEFAULT 0,
+        report_file  TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS source_stats (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        run_id      INTEGER NOT NULL,
+        source      TEXT NOT NULL,
+        raw_count   INTEGER NOT NULL DEFAULT 0,
+        new_count   INTEGER NOT NULL DEFAULT 0,
+        error_count INTEGER NOT NULL DEFAULT 0,
+        latency_ms  INTEGER NOT NULL DEFAULT 0,
+        FOREIGN KEY (run_id) REFERENCES radar_runs(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS filtered_jobs (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        run_id      INTEGER NOT NULL,
+        title       TEXT NOT NULL,
+        company     TEXT,
+        url         TEXT,
+        source      TEXT,
+        filter_name TEXT NOT NULL,
+        created_at  TEXT NOT NULL,
+        FOREIGN KEY (run_id) REFERENCES radar_runs(id)
+    );
 """
 
 
@@ -487,3 +520,95 @@ def insert_scan_results(db, scan_id, results):
             j.get("description", ""), j.get("posted", ""),
         ))
     db.commit()
+
+
+# ── Radar Runs / Health ──────────────────────────────────────────────────────
+
+def insert_run(db, started_at):
+    db.execute(
+        "INSERT INTO radar_runs (started_at) VALUES (?)",
+        (started_at,),
+    )
+    db.commit()
+    return db.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+
+
+def finish_run(db, run_id, finished_at, total_raw, total_new, total_rated, report_file):
+    db.execute(
+        "UPDATE radar_runs SET finished_at=?, total_raw=?, total_new=?, total_rated=?, report_file=? WHERE id=?",
+        (finished_at, total_raw, total_new, total_rated, report_file, run_id),
+    )
+    db.commit()
+
+
+def insert_source_stat(db, run_id, source, raw_count, new_count, error_count, latency_ms):
+    db.execute(
+        "INSERT INTO source_stats (run_id, source, raw_count, new_count, error_count, latency_ms) VALUES (?,?,?,?,?,?)",
+        (run_id, source, raw_count, new_count, error_count, latency_ms),
+    )
+    db.commit()
+
+
+def insert_filtered_jobs(db, run_id, filtered_list):
+    now = datetime.now().isoformat()
+    for fj in filtered_list:
+        db.execute(
+            "INSERT INTO filtered_jobs (run_id, title, company, url, source, filter_name, created_at) VALUES (?,?,?,?,?,?,?)",
+            (run_id, fj["title"], fj.get("company", ""), fj.get("url", ""),
+             fj.get("source", ""), fj["filter_name"], now),
+        )
+    db.commit()
+
+
+def get_latest_run(db):
+    return db.execute(
+        "SELECT * FROM radar_runs ORDER BY started_at DESC LIMIT 1"
+    ).fetchone()
+
+
+def get_source_stats(db, run_id):
+    return db.execute(
+        "SELECT * FROM source_stats WHERE run_id=? ORDER BY raw_count DESC",
+        (run_id,),
+    ).fetchall()
+
+
+def get_recent_runs(db, days=14):
+    return db.execute(
+        "SELECT * FROM radar_runs ORDER BY started_at DESC LIMIT ?",
+        (days * 2,),
+    ).fetchall()
+
+
+def get_previous_run_stats(db, run_id):
+    prev = db.execute(
+        "SELECT id FROM radar_runs WHERE id < ? ORDER BY id DESC LIMIT 1",
+        (run_id,),
+    ).fetchone()
+    if not prev:
+        return []
+    return db.execute(
+        "SELECT * FROM source_stats WHERE run_id=?",
+        (prev["id"],),
+    ).fetchall()
+
+
+def get_run_by_report_file(db, filename):
+    return db.execute(
+        "SELECT * FROM radar_runs WHERE report_file=? ORDER BY id DESC LIMIT 1",
+        (filename,),
+    ).fetchone()
+
+
+def get_filtered_jobs(db, run_id):
+    return db.execute(
+        "SELECT * FROM filtered_jobs WHERE run_id=? ORDER BY filter_name, title",
+        (run_id,),
+    ).fetchall()
+
+
+def get_filter_stats(db, run_id):
+    return db.execute(
+        "SELECT filter_name, COUNT(*) as count FROM filtered_jobs WHERE run_id=? GROUP BY filter_name ORDER BY count DESC",
+        (run_id,),
+    ).fetchall()

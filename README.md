@@ -62,6 +62,13 @@ Built and maintained using [Claude Code](https://claude.ai/code). Released under
   - ATS keyword optimization — extracts 15-20 key terms from the JD and reformulates existing experience to match the posting's vocabulary without inventing experience
 - **Two-panel editor** — edit resume and cover letter side by side, regenerate with custom instructions, version history, mark final
 - **DOCX export** — download resume or cover letter as a Word file
+- **Source Health** — tracks per-source job counts, errors, and latency for every radar run
+  - Trend arrows show whether each source returned more or fewer jobs than the previous run
+  - Filter stats show how many jobs each filter caught — helps tune search queries
+  - 14-day run history at a glance
+- **Filter audit trail** — every filtered job is logged with the reason it was dropped
+  - Collapsible "Filtered" section on each radar report page shows what was removed and why
+  - Grouped by filter (wrong title, non-US, staffing, etc.) so you can spot patterns
 - **SQLite database** — all jobs, notes, documents, comments, dismissed state, and application URLs persist locally
 
 **Telegram Bot** (`scripts/telegram_bot.py`, optional)
@@ -101,6 +108,7 @@ job-search-profile/
 │   │   ├── board.html
 │   │   ├── radar.html
 │   │   ├── portals.html               # portal scanner results
+│   │   ├── health.html                # source health + filter stats
 │   │   ├── stories.html               # interview story bank
 │   │   ├── job_detail.html
 │   │   ├── draft.html
@@ -253,6 +261,13 @@ Most setup time is writing your `docs/` files. Template files showing the expect
 ---
 
 ## Changelog
+
+### v1.5.0 — Operational visibility (2026-04-07)
+- Source health tracking: per-source job counts, errors, latency, and trend arrows on a new Health dashboard tab
+- Filter audit trail: every filtered job logged with reason, shown in a collapsible section on each radar report
+- Per-run filter stats (how many jobs each filter caught) on Health page
+- 14-day run history table
+- 128 tests passing
 
 ### v1.4.0 — Internal cleanup (2026-04-07)
 - Refactored `job_radar.py` from 1842 lines into focused modules: `models.py`, `filters.py`, `rating.py`, `report.py`, `normalize.py`, and 7 source modules under `sources/`

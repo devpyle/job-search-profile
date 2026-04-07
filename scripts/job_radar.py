@@ -11,7 +11,9 @@ Usage:
 import json
 import os
 import re
+import sqlite3
 import sys
+import time as _time
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -83,9 +85,12 @@ GMAIL_APP_PW    = os.environ.get("GMAIL_APP_PW", "")
 JSEARCH_API_KEY = os.environ.get("JSEARCH_API_KEY", "")
 EMAIL           = os.environ.get("GMAIL_TO", os.environ.get("GMAIL_FROM", ""))
 
+import db as data  # noqa: E402
+
 REPO_ROOT        = Path(__file__).parent.parent
 OUTPUT_DIR       = REPO_ROOT / "output" / "job-radar"
 SEEN_FILE        = OUTPUT_DIR / ".seen.json"
+DB_PATH          = REPO_ROOT / "dashboard" / "data" / "jobs.db"
 SEEN_EXPIRY_DAYS = 60
 
 
@@ -155,69 +160,63 @@ def dedup_keys(job: Job) -> list[str]:
     return keys
 
 
+# ── SOURCE TIMING ────────────────────────────────────────────────────────────
+
+def _timed_source_call(name, fn):
+    """Call a source function, return (jobs, error_count, latency_ms)."""
+    t0 = _time.monotonic()
+    error_count = 0
+    try:
+        jobs = fn()
+    except Exception as e:
+        log(f"Source failed: {e}", source=name)
+        jobs = []
+        error_count = 1
+    latency_ms = int((_time.monotonic() - t0) * 1000)
+    return jobs, error_count, latency_ms
+
+
 # ── MAIN ──────────────────────────────────────────────────────────────────────
 
 def main(force_run: bool = False):
     now = datetime.now()
+    run_started = now.isoformat()
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     seen = load_seen()
 
     raw_counts: dict[str, int] = {}
+    source_meta: dict[str, dict] = {}
 
-    log("Searching...", source="ATS")
-    ats_jobs = search_ats_companies()
-    raw_counts["ATS"] = len(ats_jobs)
+    def _search(name, fn):
+        log("Searching...", source=name)
+        jobs, errors, latency = _timed_source_call(name, fn)
+        raw_counts[name] = len(jobs)
+        source_meta[name] = {"error_count": errors, "latency_ms": latency}
+        log(f"{len(jobs)} results ({latency}ms)", source=name)
+        return jobs
 
-    log("Searching...", source="Adzuna")
-    adzuna_jobs = search_adzuna()
-    raw_counts["Adzuna"] = len(adzuna_jobs)
-    log(f"{len(adzuna_jobs)} results", source="Adzuna")
-
-    log("Searching...", source="Jobicy")
-    jobicy_jobs = search_jobicy()
-    raw_counts["Jobicy"] = len(jobicy_jobs)
-
-    log("Searching...", source="Himalayas")
-    himalayas_jobs = search_himalayas()
-    raw_counts["Himalayas"] = len(himalayas_jobs)
-
-    log("Searching...", source="RemoteOK")
-    remoteok_jobs = search_remoteok()
-    raw_counts["RemoteOK"] = len(remoteok_jobs)
-
-    log("Searching...", source="Remotive")
-    remotive_jobs = search_remotive()
-    raw_counts["Remotive"] = len(remotive_jobs)
+    ats_jobs       = _search("ATS", search_ats_companies)
+    adzuna_jobs    = _search("Adzuna", search_adzuna)
+    jobicy_jobs    = _search("Jobicy", search_jobicy)
+    himalayas_jobs = _search("Himalayas", search_himalayas)
+    remoteok_jobs  = _search("RemoteOK", search_remoteok)
+    remotive_jobs  = _search("Remotive", search_remotive)
 
     if JSEARCH_API_KEY:
-        log("Searching...", source="JSearch")
-        jsearch_jobs = search_jsearch()
-        raw_counts["JSearch"] = len(jsearch_jobs)
+        jsearch_jobs = _search("JSearch", search_jsearch)
     else:
         jsearch_jobs = []
 
-    log("Searching...", source="LinkedIn")
-    linkedin_jobs = search_linkedin()
-    raw_counts["LinkedIn"] = len(linkedin_jobs)
-    log(f"{len(linkedin_jobs)} results", source="LinkedIn")
+    linkedin_jobs = _search("LinkedIn", search_linkedin)
 
-    brave_jobs = []
     if BRAVE_API_KEY:
-        log("Searching...", source="Brave")
-        brave_jobs = search_brave()
-        raw_counts["Brave"] = len(brave_jobs)
-        log(f"{len(brave_jobs)} results", source="Brave")
+        brave_jobs = _search("Brave", search_brave)
     else:
+        brave_jobs = []
         log("Skipping (BRAVE_API_KEY not set)", source="Brave")
 
-    log("Searching...", source="Tavily")
-    tavily_jobs = search_tavily()
-    raw_counts["Tavily"] = len(tavily_jobs)
-    log(f"{len(tavily_jobs)} results", source="Tavily")
-
-    log("Searching...", source="WWR")
-    wwr_jobs = search_weworkremotely()
-    raw_counts["WeWorkRemotely"] = len(wwr_jobs)
+    tavily_jobs = _search("Tavily", search_tavily)
+    wwr_jobs    = _search("WeWorkRemotely", search_weworkremotely)
 
     all_jobs = (
         ats_jobs + adzuna_jobs + jobicy_jobs + himalayas_jobs + remoteok_jobs
@@ -225,17 +224,53 @@ def main(force_run: bool = False):
         + wwr_jobs
     )
 
-    report, new_jobs, new_seen = build_report(all_jobs, seen, now, dedup_keys_fn=dedup_keys)
+    report, new_jobs, new_seen, filtered = build_report(all_jobs, seen, now, dedup_keys_fn=dedup_keys)
 
     write_debug_log(new_jobs, raw_counts)
 
     slot = "am" if now.hour < 12 else "pm"
-    outfile = OUTPUT_DIR / f"{now.strftime('%Y-%m-%d')}-{slot}.md"
+    report_file = f"{now.strftime('%Y-%m-%d')}-{slot}.md"
+    outfile = OUTPUT_DIR / report_file
     outfile.write_text(report)
     log(f"Saved: {outfile}")
 
     save_seen(new_seen)
 
+    # ── Persist run stats to dashboard DB ────────────────────────────────────
+    source_new_counts: dict[str, int] = {}
+    for j in new_jobs:
+        source_new_counts[j.source] = source_new_counts.get(j.source, 0) + 1
+
+    try:
+        DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+        conn = sqlite3.connect(str(DB_PATH))
+        conn.row_factory = sqlite3.Row
+        data.init_schema(conn)
+
+        run_id = data.insert_run(conn, run_started)
+        for src, raw in raw_counts.items():
+            meta = source_meta.get(src, {})
+            data.insert_source_stat(
+                conn, run_id, src,
+                raw_count=raw,
+                new_count=source_new_counts.get(src, 0),
+                error_count=meta.get("error_count", 0),
+                latency_ms=meta.get("latency_ms", 0),
+            )
+        if filtered:
+            data.insert_filtered_jobs(conn, run_id, filtered)
+        data.finish_run(conn, run_id,
+                        finished_at=datetime.now().isoformat(),
+                        total_raw=sum(raw_counts.values()),
+                        total_new=len(new_jobs),
+                        total_rated=len(new_jobs),
+                        report_file=report_file)
+        conn.close()
+        log(f"Run stats saved (run_id={run_id}, {len(filtered)} filtered)", source="Health")
+    except Exception as e:
+        log(f"Warning: could not save run stats: {e}", source="Health")
+
+    # ── Email ────────────────────────────────────────────────────────────────
     apply_now = sum(1 for j in new_jobs if j.tier == "Apply Now")
     priority  = sum(1 for j in new_jobs if j.tier in ("Apply Now", "Worth a Look"))
     subject = f"Job Radar {now.strftime('%b %-d')} {slot.upper()} — {apply_now} Apply Now | {priority} priority / {len(new_jobs)} total"

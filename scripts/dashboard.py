@@ -674,10 +674,17 @@ def radar(date=None, slot=None):
     for r in reports:
         r["is_reviewed"] = r["filename"] in reviewed_files
 
+    # Load filtered jobs for this report (if a matching run exists)
+    filtered_grouped = {}
+    run = data.get_run_by_report_file(db, filename)
+    if run:
+        for fj in data.get_filtered_jobs(db, run["id"]):
+            filtered_grouped.setdefault(fj["filter_name"], []).append(dict(fj))
+
     current = {"filename": filename, "date": date, "slot": slot}
     return render_template("radar.html", jobs=jobs, reports=reports, current=current,
                            show_dismissed=show_dismissed, dismissed_count=len(dismissed_ids),
-                           is_reviewed=is_reviewed)
+                           is_reviewed=is_reviewed, filtered_grouped=filtered_grouped)
 
 
 @app.route("/stories")
@@ -706,6 +713,37 @@ def story_bank():
                     })
 
     return render_template("stories.html", stories=stories)
+
+
+@app.route("/health")
+def health():
+    db = get_db()
+    latest = data.get_latest_run(db)
+    if not latest:
+        return render_template("health.html", run=None, stats=[], filter_stats=[], history=[])
+
+    run = dict(latest)
+    stats = [dict(r) for r in data.get_source_stats(db, run["id"])]
+
+    prev_stats = data.get_previous_run_stats(db, run["id"])
+    prev_map = {r["source"]: r["raw_count"] for r in prev_stats}
+
+    for s in stats:
+        prev = prev_map.get(s["source"])
+        if prev is None:
+            s["trend"] = "new"
+        elif s["raw_count"] > prev:
+            s["trend"] = "up"
+        elif s["raw_count"] < prev:
+            s["trend"] = "down"
+        else:
+            s["trend"] = "flat"
+
+    filter_stats = [dict(r) for r in data.get_filter_stats(db, run["id"])]
+    history = [dict(r) for r in data.get_recent_runs(db, days=14)]
+
+    return render_template("health.html", run=run, stats=stats,
+                           filter_stats=filter_stats, history=history)
 
 
 @app.route("/portals")

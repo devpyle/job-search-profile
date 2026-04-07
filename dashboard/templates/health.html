@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block title %}Source Health{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h2>Source Health</h2>
+</div>
+
+{% if not run %}
+<div class="empty-state">
+  <p>No radar runs recorded yet. Run <code>python scripts/job_radar.py --run</code> to populate.</p>
+</div>
+{% else %}
+
+<div class="health-summary">
+  <div class="health-stat">
+    <span class="health-label">Last run</span>
+    <span class="health-value">{{ run.started_at[:16].replace('T',' ') }}</span>
+  </div>
+  <div class="health-stat">
+    <span class="health-label">Raw jobs</span>
+    <span class="health-value">{{ run.total_raw }}</span>
+  </div>
+  <div class="health-stat">
+    <span class="health-label">New (post-filter)</span>
+    <span class="health-value">{{ run.total_new }}</span>
+  </div>
+  <div class="health-stat">
+    <span class="health-label">Rated</span>
+    <span class="health-value">{{ run.total_rated }}</span>
+  </div>
+  {% if run.finished_at %}
+  <div class="health-stat">
+    <span class="health-label">Duration</span>
+    <span class="health-value">{{ run.finished_at[:16].replace('T',' ') }}</span>
+  </div>
+  {% endif %}
+</div>
+
+<h3>Sources</h3>
+<table class="health-table">
+  <thead>
+    <tr>
+      <th>Source</th>
+      <th>Raw</th>
+      <th>New</th>
+      <th>Errors</th>
+      <th>Latency</th>
+      <th>Trend</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for s in stats %}
+    <tr>
+      <td>{{ s.source }}</td>
+      <td>{{ s.raw_count }}</td>
+      <td>{{ s.new_count }}</td>
+      <td class="{% if s.error_count > 0 %}text-error{% endif %}">{{ s.error_count }}</td>
+      <td class="{% if s.latency_ms > 10000 %}text-warn{% endif %}">{{ "%.1f"|format(s.latency_ms / 1000) }}s</td>
+      <td>
+        {% if s.trend == 'up' %}<span class="trend-up" title="Increased">&#9650;</span>
+        {% elif s.trend == 'down' %}<span class="trend-down" title="Decreased">&#9660;</span>
+        {% elif s.trend == 'flat' %}<span class="trend-flat" title="No change">&#8212;</span>
+        {% elif s.trend == 'new' %}<span class="trend-new" title="First run">NEW</span>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+{% if filter_stats %}
+<h3>Filters (this run)</h3>
+<table class="health-table">
+  <thead>
+    <tr>
+      <th>Filter</th>
+      <th>Jobs caught</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for f in filter_stats %}
+    <tr>
+      <td>{{ f.filter_name.replace('_', ' ')|title }}</td>
+      <td>{{ f.count }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+{% if history|length > 1 %}
+<h3>Recent runs</h3>
+<table class="health-table">
+  <thead>
+    <tr>
+      <th>Date</th>
+      <th>Raw</th>
+      <th>New</th>
+      <th>Rated</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for h in history %}
+    <tr>
+      <td>{{ h.started_at[:16].replace('T',' ') }}</td>
+      <td>{{ h.total_raw }}</td>
+      <td>{{ h.total_new }}</td>
+      <td>{{ h.total_rated }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+{% endif %}
+{% endblock %}

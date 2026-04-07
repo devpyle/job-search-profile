@@ -258,5 +258,49 @@ def test_all_tables_exist(db):
         "jobs", "notes", "radar_comments", "radar_dismissed", "radar_reviewed",
         "job_apply_urls", "documents", "interview_contacts", "interview_rounds",
         "offer_details", "fit_analyses", "portal_scans", "portal_results",
+        "radar_runs", "source_stats", "filtered_jobs",
     }
     assert expected.issubset(tables)
+
+
+def test_health_page_empty(client):
+    resp = client.get("/health")
+    assert resp.status_code == 200
+    assert b"No radar runs" in resp.data
+
+
+def test_health_page_with_run(client, db):
+    from datetime import datetime
+    db.execute(
+        "INSERT INTO radar_runs (started_at, finished_at, total_raw, total_new, total_rated, report_file) VALUES (?,?,?,?,?,?)",
+        (datetime.now().isoformat(), datetime.now().isoformat(), 100, 10, 10, "2026-04-07-am.md"),
+    )
+    db.commit()
+    run_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+    db.execute(
+        "INSERT INTO source_stats (run_id, source, raw_count, new_count, error_count, latency_ms) VALUES (?,?,?,?,?,?)",
+        (run_id, "Adzuna", 25, 5, 0, 1200),
+    )
+    db.commit()
+    resp = client.get("/health")
+    assert resp.status_code == 200
+    assert b"Adzuna" in resp.data
+    assert b"25" in resp.data
+
+
+def test_health_filter_stats(client, db):
+    from datetime import datetime
+    db.execute(
+        "INSERT INTO radar_runs (started_at, total_raw, total_new, total_rated) VALUES (?,?,?,?)",
+        (datetime.now().isoformat(), 50, 5, 5),
+    )
+    db.commit()
+    run_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+    db.execute(
+        "INSERT INTO filtered_jobs (run_id, title, company, source, filter_name, created_at) VALUES (?,?,?,?,?,?)",
+        (run_id, "Data Analyst", "Acme", "Adzuna", "wrong_title", datetime.now().isoformat()),
+    )
+    db.commit()
+    resp = client.get("/health")
+    assert resp.status_code == 200
+    assert b"Wrong Title" in resp.data

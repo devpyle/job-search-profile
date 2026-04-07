@@ -104,6 +104,26 @@
   </div>
 {% endif %}
 
+{% if filtered_grouped %}
+<details class="filtered-section">
+  <summary>Filtered out ({{ filtered_grouped.values()|map('length')|sum }} jobs)</summary>
+  {% for filter_name, items in filtered_grouped.items()|sort %}
+  <div class="filtered-group">
+    <div class="filtered-group-label">{{ filter_name.replace('_', ' ')|title }} ({{ items|length }})</div>
+    {% for fj in items[:20] %}
+    <div class="filtered-item">
+      {{ fj.title }}{% if fj.company %} — {{ fj.company }}{% endif %}
+      <span class="source">[{{ fj.source }}]</span>
+    </div>
+    {% endfor %}
+    {% if items|length > 20 %}
+    <div class="filtered-item" style="font-style: italic;">...and {{ items|length - 20 }} more</div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</details>
+{% endif %}
+
 <!-- Toast notification -->
 <div class="toast hidden" id="toast"></div>
 {% endblock %}

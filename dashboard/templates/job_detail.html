@@ -297,7 +297,14 @@ function addNote(jobId) {
     const div = document.createElement("div");
     div.className = "note-item";
     const now = new Date().toISOString().slice(0,16).replace("T"," ");
-    div.innerHTML = `<div class="note-time">${now}</div><div class="note-body">${body}</div>`;
+    const timeDiv = document.createElement("div");
+    timeDiv.className = "note-time";
+    timeDiv.textContent = now;
+    const bodyDiv = document.createElement("div");
+    bodyDiv.className = "note-body";
+    bodyDiv.textContent = body;
+    div.appendChild(timeDiv);
+    div.appendChild(bodyDiv);
     list.prepend(div);
     showToast("Note added");
   });
@@ -379,9 +386,44 @@ function addContact(jobId) {
     document.getElementById("no-contacts")?.remove();
     const div = document.createElement("div");
     div.className = "contact-row"; div.id = `contact-${d.id}`;
-    const linkedinHtml = linkedin ? `<a href="${linkedin}" target="_blank" class="contact-link">LinkedIn</a>` : '';
-    const emailHtml    = email    ? `<a href="mailto:${email}" class="contact-link">${email}</a>` : '';
-    div.innerHTML = `<span class="contact-role-badge">${role}</span><span class="contact-name">${name}</span>${title ? `<span class="contact-meta">${title}</span>` : ''}${emailHtml}${linkedinHtml}<button class="btn-icon" onclick="deleteContact('${jobId}', ${d.id})">✕</button>`;
+
+    const roleSpan = document.createElement("span");
+    roleSpan.className = "contact-role-badge";
+    roleSpan.textContent = role;
+    div.appendChild(roleSpan);
+
+    const nameSpan = document.createElement("span");
+    nameSpan.className = "contact-name";
+    nameSpan.textContent = name;
+    div.appendChild(nameSpan);
+
+    if (title) {
+      const titleSpan = document.createElement("span");
+      titleSpan.className = "contact-meta";
+      titleSpan.textContent = title;
+      div.appendChild(titleSpan);
+    }
+    if (email) {
+      const emailLink = document.createElement("a");
+      emailLink.href = "mailto:" + email;
+      emailLink.className = "contact-link";
+      emailLink.textContent = email;
+      div.appendChild(emailLink);
+    }
+    if (linkedin) {
+      const liLink = document.createElement("a");
+      liLink.href = linkedin;
+      liLink.target = "_blank";
+      liLink.className = "contact-link";
+      liLink.textContent = "LinkedIn";
+      div.appendChild(liLink);
+    }
+    const delBtn = document.createElement("button");
+    delBtn.className = "btn-icon";
+    delBtn.textContent = "✕";
+    delBtn.onclick = function() { deleteContact(jobId, d.id); };
+    div.appendChild(delBtn);
+
     document.getElementById("contacts-list").appendChild(div);
     ["contact-name","contact-title","contact-email","contact-linkedin"].forEach(id => document.getElementById(id).value = "");
     showToast("Contact added");

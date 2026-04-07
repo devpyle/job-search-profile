@@ -93,7 +93,7 @@ ENV_VARS = [
      "https://console.anthropic.com/", True),
     ("ADZUNA_APP_ID",      "Adzuna App ID (free — job search API)",
      "https://developer.adzuna.com/", True),
-    ("ADZUNA_API_KEY",     "Adzuna API key", "", True),
+    ("ADZUNA_APP_KEY",     "Adzuna API key", "", True),
     ("BRAVE_API_KEY",      "Brave Search API key (paid — optional, skip if you don't have one)",
      "https://api.search.brave.com/", False),
     ("TAVILY_API_KEY",     "Tavily API key (free tier available)",

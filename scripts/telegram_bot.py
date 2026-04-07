@@ -7,11 +7,25 @@ import subprocess
 from datetime import datetime
 from pathlib import Path
 
-import anthropic
-import google.genai as genai
 import requests
 from dotenv import load_dotenv
-from openai import OpenAI
+
+# Provider SDKs — imported lazily to avoid crashing when optional ones are absent
+anthropic = None
+genai = None
+OpenAI = None
+
+def _ensure_import(name):
+    global anthropic, genai, OpenAI
+    if name == "anthropic" and anthropic is None:
+        import anthropic as _mod
+        anthropic = _mod
+    elif name == "google" and genai is None:
+        import google.genai as _mod
+        genai = _mod
+    elif name in ("openai", "nvidia", "moonshot", "openrouter") and OpenAI is None:
+        from openai import OpenAI as _cls
+        OpenAI = _cls
 
 load_dotenv()
 
@@ -19,36 +33,60 @@ import sys  # noqa: E402
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from config import CANDIDATE_NAME  # noqa: E402
 
-TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
-AUTHORIZED_USER = int(os.environ["TELEGRAM_USER_ID"])
+TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+AUTHORIZED_USER = int(os.environ.get("TELEGRAM_USER_ID", "0"))
 REPO_ROOT = Path(__file__).parent.parent
 OUTPUT_DIR = REPO_ROOT / "output" / "job-radar"
 DOCS_DIR = REPO_ROOT / "docs"
 API = f"https://api.telegram.org/bot{TOKEN}"
 STATE_FILE = REPO_ROOT / "output" / ".bot_state.json"
 
-# ── Provider clients ──────────────────────────────────────────────────────────
+# ── Provider clients (lazy-initialized) ───────────────────────────────────────
 
-claude_client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+_clients = {}
 
-openai_client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
-
-nvidia_client = OpenAI(
-    api_key=os.environ["NVIDIA_API_KEY"],
-    base_url=os.environ["NVIDIA_BASE_URL"],
-)
-
-moonshot_client = OpenAI(
-    api_key=os.environ["MOONSHOT_API_KEY"],
-    base_url=os.environ["MOONSHOT_BASE_URL"],
-)
-
-openrouter_client = OpenAI(
-    api_key=os.environ["OPENROUTER_API_KEY"],
-    base_url=os.environ["OPENROUTER_BASE_URL"],
-)
-
-google_client = genai.Client(api_key=os.environ["GOOGLE_API_KEY"])
+def _get_client(name):
+    """Lazily initialize provider clients on first use."""
+    if name in _clients:
+        return _clients[name]
+    _ensure_import(name)
+    if name == "anthropic":
+        key = os.environ.get("ANTHROPIC_API_KEY")
+        if not key:
+            raise RuntimeError("ANTHROPIC_API_KEY not set")
+        _clients[name] = anthropic.Anthropic(api_key=key)
+    elif name == "openai":
+        key = os.environ.get("OPENAI_API_KEY")
+        if not key:
+            raise RuntimeError("OPENAI_API_KEY not set — needed for this model")
+        _clients[name] = OpenAI(api_key=key)
+    elif name == "nvidia":
+        key = os.environ.get("NVIDIA_API_KEY")
+        base = os.environ.get("NVIDIA_BASE_URL")
+        if not key or not base:
+            raise RuntimeError("NVIDIA_API_KEY and NVIDIA_BASE_URL not set — needed for this model")
+        _clients[name] = OpenAI(api_key=key, base_url=base)
+    elif name == "moonshot":
+        key = os.environ.get("MOONSHOT_API_KEY")
+        base = os.environ.get("MOONSHOT_BASE_URL")
+        if not key or not base:
+            raise RuntimeError("MOONSHOT_API_KEY and MOONSHOT_BASE_URL not set — needed for this model")
+        _clients[name] = OpenAI(api_key=key, base_url=base)
+    elif name == "openrouter":
+        key = os.environ.get("OPENROUTER_API_KEY")
+        base = os.environ.get("OPENROUTER_BASE_URL")
+        if not key or not base:
+            raise RuntimeError("OPENROUTER_API_KEY and OPENROUTER_BASE_URL not set — needed for this model")
+        _clients[name] = OpenAI(api_key=key, base_url=base)
+    elif name == "google":
+        _ensure_import("google")
+        key = os.environ.get("GOOGLE_API_KEY")
+        if not key:
+            raise RuntimeError("GOOGLE_API_KEY not set — needed for this model")
+        _clients[name] = genai.Client(api_key=key)
+    else:
+        raise RuntimeError(f"Unknown provider: {name}")
+    return _clients[name]
 
 # ── Model registry ────────────────────────────────────────────────────────────
 # alias -> (provider, model_id)
@@ -122,7 +160,7 @@ def build_system_prompt() -> str:
 # ── Claude router ─────────────────────────────────────────────────────────────
 
 def ask_claude(model_id: str, system: str, message: str) -> str:
-    response = claude_client.messages.create(
+    response = _get_client("anthropic").messages.create(
         model=model_id,
         max_tokens=1024,
         system=system,
@@ -144,7 +182,7 @@ def ask_openai_compat(client: OpenAI, model_id: str, system: str, message: str) 
 
 
 def ask_google(model_id: str, system: str, message: str) -> str:
-    response = google_client.models.generate_content(
+    response = _get_client("google").models.generate_content(
         model=model_id,
         contents=f"{system}\n\nUser: {message}",
     )
@@ -160,13 +198,13 @@ def ask(message: str) -> tuple[str, str]:
     # Arbitrary OpenRouter model via "or/..." syntax
     if alias.startswith("or/"):
         model_id = state.get("_or_custom", alias[3:])
-        reply = ask_openai_compat(openrouter_client, model_id, system, message)
+        reply = ask_openai_compat(_get_client("openrouter"), model_id, system, message)
         return reply, model_id
 
     # Arbitrary Nvidia NIM model via "nv/..." syntax
     if alias.startswith("nv/"):
         model_id = state.get("_nv_custom", alias[3:])
-        reply = ask_openai_compat(nvidia_client, model_id, system, message)
+        reply = ask_openai_compat(_get_client("nvidia"), model_id, system, message)
         return reply, model_id
 
     provider, model_id = MODELS.get(alias, MODELS[DEFAULT_MODEL])
@@ -176,13 +214,13 @@ def ask(message: str) -> tuple[str, str]:
     elif provider == "google":
         reply = ask_google(model_id, system, message)
     elif provider == "openai":
-        reply = ask_openai_compat(openai_client, model_id, system, message)
+        reply = ask_openai_compat(_get_client("openai"), model_id, system, message)
     elif provider == "nvidia":
-        reply = ask_openai_compat(nvidia_client, model_id, system, message)
+        reply = ask_openai_compat(_get_client("nvidia"), model_id, system, message)
     elif provider == "moonshot":
-        reply = ask_openai_compat(moonshot_client, model_id, system, message)
+        reply = ask_openai_compat(_get_client("moonshot"), model_id, system, message)
     elif provider == "openrouter":
-        reply = ask_openai_compat(openrouter_client, model_id, system, message)
+        reply = ask_openai_compat(_get_client("openrouter"), model_id, system, message)
     else:
         reply = f"Unknown provider: {provider}"
 
@@ -249,7 +287,7 @@ def fetch_free_models() -> list[dict]:
     """Fetch current free models from OpenRouter API."""
     r = requests.get(
         "https://openrouter.ai/api/v1/models",
-        headers={"Authorization": f"Bearer {os.environ['OPENROUTER_API_KEY']}"},
+        headers={"Authorization": f"Bearer {os.environ.get('OPENROUTER_API_KEY', '')}"},
         timeout=10,
     )
     r.raise_for_status()
@@ -265,8 +303,8 @@ def cmd_nvidia(chat_id: int):
     send(chat_id, "_Fetching current Nvidia NIM models..._")
     try:
         r = requests.get(
-            f"{os.environ['NVIDIA_BASE_URL']}/models",
-            headers={"Authorization": f"Bearer {os.environ['NVIDIA_API_KEY']}"},
+            f"{os.environ.get('NVIDIA_BASE_URL', '')}/models",
+            headers={"Authorization": f"Bearer {os.environ.get('NVIDIA_API_KEY', '')}"},
             timeout=10,
         )
         r.raise_for_status()
@@ -414,7 +452,8 @@ def main():
         except requests.exceptions.Timeout:
             pass
         except Exception as e:
-            print(f"Error: {e}")
+            msg = str(e).replace(TOKEN, "BOT_TOKEN_REDACTED") if TOKEN else str(e)
+            print(f"Error: {msg}")
 
 
 if __name__ == "__main__":

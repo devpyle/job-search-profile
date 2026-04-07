@@ -1087,6 +1087,8 @@ def job_detail(job_id):
 @app.route("/jobs/<job_id>/apply_url", methods=["POST"])
 def save_apply_url(job_id):
     url = (request.json or {}).get("url", "").strip()
+    if url and not url.lower().startswith(("http://", "https://", "mailto:")):
+        return jsonify({"ok": False, "error": "URL must start with http://, https://, or mailto:"}), 400
     db  = get_db()
     if url:
         db.execute(
@@ -1328,4 +1330,4 @@ if __name__ == "__main__":
     print("  Job Search Dashboard")
     print("  http://localhost:5000")
     print("─" * 50)
-    app.run(debug=True, port=5000, use_reloader=True)
+    app.run(debug=False, host="127.0.0.1", port=5000)

@@ -1,0 +1,24 @@
+{
+  "jobs": [
+    {
+      "jobTitle": "Product Owner — Cloud",
+      "companyName": "Acme Corp",
+      "jobDescription": "Own cloud product platform strategy and execution.",
+      "url": "https://jobicy.com/jobs/801",
+      "annualSalaryMin": 120000,
+      "annualSalaryMax": 150000,
+      "salaryCurrency": "USD",
+      "pubDate": "2026-04-01"
+    },
+    {
+      "jobTitle": "Product Manager — DevTools",
+      "companyName": "Beta Inc",
+      "jobDescription": "Lead product for developer tools.",
+      "url": "https://jobicy.com/jobs/802",
+      "annualSalaryMin": 0,
+      "annualSalaryMax": 0,
+      "salaryCurrency": "USD",
+      "pubDate": "2026-03-30"
+    }
+  ]
+}

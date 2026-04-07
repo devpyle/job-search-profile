@@ -32,6 +32,13 @@ from flask import (Flask, g, jsonify, redirect, render_template,
 
 load_dotenv()
 
+from startup import validate
+validate(
+    env_optional={"ANTHROPIC_API_KEY": "AI-powered document generation"},
+    config_attrs=["CANDIDATE_NAME", "JOB_DOCS", "HOME_METRO_TERMS", "HOME_CITY"],
+    script_name="dashboard.py",
+)
+
 # ── PATHS ─────────────────────────────────────────────────────────────────────
 
 REPO_ROOT   = Path(__file__).parent.parent

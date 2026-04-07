@@ -1,0 +1,22 @@
+{
+  "jobs": [
+    {
+      "title": "Product Owner",
+      "company_name": "Acme Corp",
+      "candidate_required_location": "USA",
+      "description": "Lead product ownership for our SaaS platform.",
+      "url": "https://remotive.com/jobs/401",
+      "salary": "$120K-$150K",
+      "publication_date": "2026-04-01"
+    },
+    {
+      "title": "Product Manager — Platform",
+      "company_name": "Beta Inc",
+      "candidate_required_location": "Worldwide",
+      "description": "Drive platform product strategy.",
+      "url": "https://remotive.com/jobs/402",
+      "salary": "",
+      "publication_date": "2026-03-31"
+    }
+  ]
+}

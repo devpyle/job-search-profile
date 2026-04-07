@@ -31,6 +31,12 @@ load_dotenv()
 
 import sys  # noqa: E402
 sys.path.insert(0, str(Path(__file__).parent.parent))
+from startup import validate  # noqa: E402
+validate(
+    env_optional={"TELEGRAM_BOT_TOKEN": "Telegram bot", "TELEGRAM_USER_ID": "Authorized user filter"},
+    config_attrs=["CANDIDATE_NAME"],
+    script_name="telegram_bot.py",
+)
 from config import CANDIDATE_NAME  # noqa: E402
 
 TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")

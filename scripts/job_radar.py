@@ -5,6 +5,7 @@ Himalayas, Jobicy, RemoteOK, JSearch, and ATS-direct. Saves a dated report, emai
 Usage:
   Scheduled (cron):  python3 job_radar.py
   Manual test run:   python3 job_radar.py --run
+  Verbose output:    python3 job_radar.py --run --verbose
 """
 
 import html
@@ -26,8 +27,38 @@ from typing import Optional
 import anthropic
 import requests
 from dotenv import load_dotenv
+from log import log, init as log_init
+from startup import validate
 
 load_dotenv()
+
+# ── STARTUP VALIDATION ────────────────────────────────────────────────────────
+validate(
+    env_required={
+        "ADZUNA_APP_ID": "Adzuna job search",
+        "ADZUNA_APP_KEY": "Adzuna job search",
+        "TAVILY_API_KEY": "Tavily web search",
+        "ANTHROPIC_API_KEY": "Claude AI job rating",
+    },
+    env_optional={
+        "BRAVE_API_KEY": "Brave web search (skipped if absent)",
+        "JSEARCH_API_KEY": "JSearch/RapidAPI (skipped if absent)",
+        "GMAIL_APP_PW": "Email delivery (report saved to disk if absent)",
+        "GMAIL_TO": "Email recipient",
+        "GMAIL_FROM": "Email sender",
+    },
+    config_attrs=[
+        "CANDIDATE_BACKGROUND", "APPLY_NOW_DESCRIPTION",
+        "HOME_CITY", "HOME_STATE", "HOME_METRO_TERMS", "MIN_SALARY",
+        "ADZUNA_QUERIES", "BRAVE_QUERIES", "TAVILY_QUERIES",
+        "LI_REMOTE_QUERIES", "LI_LOCAL_QUERIES",
+        "JSEARCH_REMOTE_QUERIES", "JSEARCH_LOCAL_QUERIES",
+        "ADZUNA_COUNTRY", "REQUIRE_US_LOCATION",
+        "PORTAL_COMPANIES", "PORTAL_NAME_OVERRIDES",
+        "PORTAL_TARGET_TITLES", "PORTAL_BLOCK_SUFFIXES",
+    ],
+    script_name="job_radar.py",
+)
 
 # ── SECRETS (from .env) ────────────────────────────────────────────────────────
 ADZUNA_APP_ID     = os.environ["ADZUNA_APP_ID"]
@@ -689,11 +720,11 @@ def rate_with_claude(job: Job) -> tuple[str, str, str]:
         except anthropic.RateLimitError:
             wait = 15 * (2 ** attempt)  # 15s, 30s, 60s, 120s
             with _print_lock:
-                print(f"  Rate limit (attempt {attempt+1}/{max_retries}) — waiting {wait}s...")
+                log(f"Rate limit (attempt {attempt+1}/{max_retries}) — waiting {wait}s...", source="Rating")
             time.sleep(wait)
         except Exception as e:
             with _print_lock:
-                print(f"  Claude rating failed for '{job.title}': {e}")
+                log(f"Failed for '{job.title}': {e}", source="Rating")
             break
     return "Worth a Look", "Rating unavailable", ""
 
@@ -706,7 +737,7 @@ def load_seen() -> dict:
         return {}
     raw = json.loads(SEEN_FILE.read_text())
     if isinstance(raw, list):
-        print(f"  Migrating .seen.json to timestamped format ({len(raw)} entries)")
+        log(f"Migrating .seen.json to timestamped format ({len(raw)} entries)", source="Dedup")
         seen = {k: today_str for k in raw}
     else:
         seen = raw
@@ -715,7 +746,7 @@ def load_seen() -> dict:
     seen = {k: v for k, v in seen.items() if v >= cutoff}
     expired = before - len(seen)
     if expired:
-        print(f"  Expired {expired} seen entries older than {SEEN_EXPIRY_DAYS} days")
+        log(f"Expired {expired} seen entries older than {SEEN_EXPIRY_DAYS} days", source="Dedup")
     return seen
 
 
@@ -807,7 +838,7 @@ def search_adzuna() -> list[Job]:
                     posted=posted, source="Adzuna",
                 ))
         except Exception as e:
-            print(f"Adzuna query failed ({q['what']}): {e}")
+            log(f"Query failed ({q['what']}): {e}", source="Adzuna")
     return jobs
 
 
@@ -834,7 +865,7 @@ def search_brave() -> list[Job]:
                     source="Brave",
                 ))
         except Exception as e:
-            print(f"Brave query failed ({q[:50]}): {e}")
+            log(f"Query failed ({q[:50]}): {e}", source="Brave")
     return jobs
 
 
@@ -883,7 +914,7 @@ def search_tavily() -> list[Job]:
                     source="Tavily",
                 ))
         except Exception as e:
-            print(f"Tavily query failed ({q[:50]}): {e}")
+            log(f"Query failed ({q[:50]}): {e}", source="Tavily")
     return jobs
 
 
@@ -994,7 +1025,7 @@ def li_enrich_descriptions(jobs: list[Job]) -> None:
     li_jobs = [j for j in jobs if j.source == "LinkedIn" and not j.description]
     if not li_jobs:
         return
-    print(f"  Fetching descriptions for {len(li_jobs)} LinkedIn jobs...")
+    log(f"Fetching descriptions for {len(li_jobs)} LinkedIn jobs...", source="LinkedIn")
     for i, job in enumerate(li_jobs):
         if i > 0:
             time.sleep(random.uniform(2, 5))
@@ -1007,19 +1038,19 @@ def search_linkedin() -> list[Job]:
     try:
         from bs4 import BeautifulSoup  # noqa: F401
     except ImportError:
-        print("  BeautifulSoup not installed, skipping LinkedIn")
+        log("BeautifulSoup not installed, skipping", source="LinkedIn")
         return []
     jobs = []
     for q in LI_REMOTE_QUERIES:
         try:
             jobs.extend(_li_fetch(q, remote=True))
         except Exception as e:
-            print(f"  LinkedIn remote query failed ({q[:40]}): {e}")
+            log(f"Remote query failed ({q[:40]}): {e}", source="LinkedIn")
     for q in LI_RALEIGH_QUERIES:
         try:
             jobs.extend(_li_fetch(q, remote=False))
         except Exception as e:
-            print(f"  LinkedIn Raleigh query failed ({q[:40]}): {e}")
+            log(f"Local query failed ({q[:40]}): {e}", source="LinkedIn")
     return jobs
 
 
@@ -1061,8 +1092,8 @@ def search_remotive() -> list[Job]:
                 ))
             time.sleep(1.5)
         except Exception as e:
-            print(f"  Remotive error ({params}): {e}")
-    print(f"  Remotive: {len(jobs)} results")
+            log(f"Error ({params}): {e}", source="Remotive")
+    log(f"{len(jobs)} results", source="Remotive")
     return jobs
 
 
@@ -1094,8 +1125,8 @@ def search_weworkremotely() -> list[Job]:
                     source="WeWorkRemotely",
                 ))
         except Exception as e:
-            print(f"  WeWorkRemotely error ({feed_url}): {e}")
-    print(f"  WeWorkRemotely: {len(jobs)} results")
+            log(f"Error ({feed_url}): {e}", source="WWR")
+    log(f"{len(jobs)} results", source="WWR")
     return jobs
 
 
@@ -1151,9 +1182,9 @@ def search_himalayas() -> list[Job]:
                 if len(items) < 20:
                     break
             except Exception as e:
-                print(f"  Himalayas error (offset={offset}): {e}")
+                log(f"Error (offset={offset}): {e}", source="Himalayas")
                 break
-    print(f"  Himalayas: {len(jobs)} results")
+    log(f"{len(jobs)} results", source="Himalayas")
     return jobs
 
 
@@ -1173,7 +1204,7 @@ def search_remoteok() -> list[Job]:
             timeout=20,
         )
         if resp.status_code != 200:
-            print(f"  RemoteOK error: HTTP {resp.status_code}")
+            log(f"Error: HTTP {resp.status_code}", source="RemoteOK")
             return []
         seen_urls: set[str] = set()
         for item in resp.json():
@@ -1205,8 +1236,8 @@ def search_remoteok() -> list[Job]:
                 source="RemoteOK",
             ))
     except Exception as e:
-        print(f"  RemoteOK error: {e}")
-    print(f"  RemoteOK: {len(jobs)} results")
+        log(f"Error: {e}", source="RemoteOK")
+    log(f"{len(jobs)} results", source="RemoteOK")
     return jobs
 
 
@@ -1228,7 +1259,7 @@ def search_jobicy() -> list[Job]:
         try:
             resp = requests.get("https://jobicy.com/api/v2/remote-jobs", params=params, timeout=20)
             if resp.status_code != 200:
-                print(f"  Jobicy error ({params.get('tag','?')}): HTTP {resp.status_code}")
+                log(f"Error ({params.get('tag','?')}): HTTP {resp.status_code}", source="Jobicy")
                 continue
             for item in resp.json().get("jobs", []):
                 url = item.get("url", "") or ""
@@ -1258,8 +1289,8 @@ def search_jobicy() -> list[Job]:
                 ))
             time.sleep(1.5)
         except Exception as e:
-            print(f"  Jobicy error ({params.get('tag','?')}): {e}")
-    print(f"  Jobicy: {len(jobs)} results")
+            log(f"Error ({params.get('tag','?')}): {e}", source="Jobicy")
+    log(f"{len(jobs)} results", source="Jobicy")
     return jobs
 
 
@@ -1318,11 +1349,11 @@ def search_jsearch() -> list[Job]:
                 break
             except requests.exceptions.Timeout:
                 if attempt >= 2:
-                    print(f"  JSearch timeout ({q}) — skipping after 3 attempts")
+                    log(f"Timeout ({q}) — skipping after 3 attempts", source="JSearch")
             except Exception as e:
-                print(f"  JSearch error ({q}): {e}")
+                log(f"Error ({q}): {e}", source="JSearch")
                 break
-    print(f"  JSearch: {len(jobs)} results")
+    log(f"{len(jobs)} results", source="JSearch")
     return jobs
 
 
@@ -1438,7 +1469,7 @@ def search_ats_companies() -> list[Job]:
 
     total = len(PORTAL_COMPANIES)
     total_tried = total_hits = 0
-    print(f"  ATS: checking {total} companies across Greenhouse / Lever / Ashby...")
+    log(f"Checking {total} companies across Greenhouse / Lever / Ashby...", source="ATS")
     for slug in PORTAL_COMPANIES:
         found  = _try_greenhouse(slug)
         found += _try_lever(slug)
@@ -1447,13 +1478,13 @@ def search_ats_companies() -> list[Job]:
             total_hits += 1
             jobs.extend(found)
             titles = ", ".join(j.title for j in found[:2])
-            print(f"    ✓ {slug} ({len(found)}): {titles}")
+            log(f"✓ {slug} ({len(found)}): {titles}", source="ATS", verbose=True)
         total_tried += 1
         if total_tried % 50 == 0:
-            print(f"  ATS: {total_tried}/{total} checked — {len(jobs)} matches so far")
+            log(f"{total_tried}/{total} checked — {len(jobs)} matches so far", source="ATS", verbose=True)
             time.sleep(1)
 
-    print(f"  ATS direct: {len(jobs)} results from {total_hits}/{total_tried} companies")
+    log(f"{len(jobs)} results from {total_hits}/{total_tried} companies", source="ATS")
     return jobs
 
 
@@ -1497,9 +1528,9 @@ def write_debug_log(jobs: list[Job], raw_counts: dict):
     try:
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
         DEBUG_LOG_FILE.write_text("\n".join(lines), encoding="utf-8")
-        print(f"  Debug log: {DEBUG_LOG_FILE} ({len(jobs)} jobs, {sum(raw_counts.values())} raw)")
+        log(f"Debug log: {DEBUG_LOG_FILE} ({len(jobs)} jobs, {sum(raw_counts.values())} raw)")
     except Exception as e:
-        print(f"  Warning: could not write debug log: {e}")
+        log(f"Warning: could not write debug log: {e}")
 
 
 # ── BUILD REPORT ──────────────────────────────────────────────────────────────
@@ -1555,7 +1586,7 @@ def build_report(jobs: list[Job], seen: dict, now: datetime) -> tuple[str, list[
     # ── Parallel Claude rating — batches of 3, 5s sleep between batches ──────
     # BATCH_SIZE=3 fires simultaneously; 5s pause prevents token-burst rate limits.
     # On a normal 50-job run adds ~80s total. Worth it to get real scores.
-    print(f"  Rating {len(new_jobs)} jobs with Claude Haiku (3 parallel, batched)...")
+    log(f"Rating {len(new_jobs)} jobs with Claude Haiku (3 parallel, batched)...", source="Rating")
     rated: list[Optional[Job]] = [None] * len(new_jobs)
     BATCH_SIZE = 3
 
@@ -1567,7 +1598,7 @@ def build_report(jobs: list[Job], seen: dict, now: datetime) -> tuple[str, list[
         if salary_text and not job.salary_min:
             job.salary_text = salary_text
         with _print_lock:
-            print(f"    {i+1}/{len(new_jobs)} {tier} — {job.title[:60]}")
+            log(f"{i+1}/{len(new_jobs)} {tier} — {job.title[:60]}", source="Rating", verbose=True)
         return i, job
 
     for batch_start in range(0, len(new_jobs), BATCH_SIZE):
@@ -1581,7 +1612,7 @@ def build_report(jobs: list[Job], seen: dict, now: datetime) -> tuple[str, list[
                 except Exception as e:
                     i = futures[future]
                     with _print_lock:
-                        print(f"  Rating error (job {i}): {e}")
+                        log(f"Error (job {i}): {e}", source="Rating")
                     new_jobs[i].tier = "Worth a Look"
                     new_jobs[i].reason = "Rating unavailable"
                     rated[i] = new_jobs[i]
@@ -1720,58 +1751,58 @@ def main(force_run: bool = False):
     # so the best description/salary anchors each listing.
     raw_counts: dict[str, int] = {}
 
-    print("Searching ATS direct (Greenhouse / Lever / Ashby)...")
+    log("Searching...", source="ATS")
     ats_jobs = search_ats_companies()
     raw_counts["ATS"] = len(ats_jobs)
 
-    print("Searching Adzuna...")
+    log("Searching...", source="Adzuna")
     adzuna_jobs = search_adzuna()
     raw_counts["Adzuna"] = len(adzuna_jobs)
-    print(f"  {len(adzuna_jobs)} results")
+    log(f"{len(adzuna_jobs)} results", source="Adzuna")
 
-    print("Searching Jobicy...")
+    log("Searching...", source="Jobicy")
     jobicy_jobs = search_jobicy()
     raw_counts["Jobicy"] = len(jobicy_jobs)
 
-    print("Searching Himalayas...")
+    log("Searching...", source="Himalayas")
     himalayas_jobs = search_himalayas()
     raw_counts["Himalayas"] = len(himalayas_jobs)
 
-    print("Searching RemoteOK...")
+    log("Searching...", source="RemoteOK")
     remoteok_jobs = search_remoteok()
     raw_counts["RemoteOK"] = len(remoteok_jobs)
 
-    print("Searching Remotive...")
+    log("Searching...", source="Remotive")
     remotive_jobs = search_remotive()
     raw_counts["Remotive"] = len(remotive_jobs)
 
     if JSEARCH_API_KEY:
-        print("Searching JSearch...")
+        log("Searching...", source="JSearch")
         jsearch_jobs = search_jsearch()
         raw_counts["JSearch"] = len(jsearch_jobs)
     else:
         jsearch_jobs = []
 
-    print("Searching LinkedIn...")
+    log("Searching...", source="LinkedIn")
     linkedin_jobs = search_linkedin()
     raw_counts["LinkedIn"] = len(linkedin_jobs)
-    print(f"  {len(linkedin_jobs)} results")
+    log(f"{len(linkedin_jobs)} results", source="LinkedIn")
 
     brave_jobs = []
     if BRAVE_API_KEY:
-        print("Searching Brave...")
+        log("Searching...", source="Brave")
         brave_jobs = search_brave()
         raw_counts["Brave"] = len(brave_jobs)
-        print(f"  {len(brave_jobs)} results")
+        log(f"{len(brave_jobs)} results", source="Brave")
     else:
-        print("Skipping Brave (BRAVE_API_KEY not set)")
+        log("Skipping (BRAVE_API_KEY not set)", source="Brave")
 
-    print("Searching Tavily...")
+    log("Searching...", source="Tavily")
     tavily_jobs = search_tavily()
     raw_counts["Tavily"] = len(tavily_jobs)
-    print(f"  {len(tavily_jobs)} results")
+    log(f"{len(tavily_jobs)} results", source="Tavily")
 
-    print("Searching WeWorkRemotely...")
+    log("Searching...", source="WWR")
     wwr_jobs = search_weworkremotely()
     raw_counts["WeWorkRemotely"] = len(wwr_jobs)
 
@@ -1789,7 +1820,7 @@ def main(force_run: bool = False):
     slot = "am" if now.hour < 12 else "pm"
     outfile = OUTPUT_DIR / f"{now.strftime('%Y-%m-%d')}-{slot}.md"
     outfile.write_text(report)
-    print(f"Saved: {outfile}")
+    log(f"Saved: {outfile}")
 
     save_seen(new_seen)
 
@@ -1798,13 +1829,14 @@ def main(force_run: bool = False):
     subject = f"Job Radar {now.strftime('%b %-d')} {slot.upper()} — {apply_now} Apply Now | {priority} priority / {len(new_jobs)} total"
     if EMAIL and GMAIL_APP_PW:
         send_email(subject, report, attachment=outfile)
-        print("Email sent.")
+        log("Email sent.", source="Email")
     else:
-        print("Email skipped (GMAIL_FROM/GMAIL_TO/GMAIL_APP_PW not configured). Report saved to disk.")
+        log("Skipped (GMAIL_FROM/GMAIL_TO/GMAIL_APP_PW not configured). Report saved to disk.", source="Email")
 
 
 if __name__ == "__main__":
+    log_init()
     force_run = "--run" in sys.argv
     if force_run:
-        print("Manual run")
+        log("Manual run")
     main(force_run=force_run)

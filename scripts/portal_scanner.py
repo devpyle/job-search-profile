@@ -16,6 +16,12 @@ import requests
 
 # ── CONFIG (from gitignored config.py) ────────────────────────────────────────
 sys.path.insert(0, str(Path(__file__).parent.parent))
+from startup import validate  # noqa: E402
+validate(
+    config_attrs=["PORTAL_COMPANIES", "PORTAL_NAME_OVERRIDES",
+                  "PORTAL_TARGET_TITLES", "PORTAL_BLOCK_SUFFIXES"],
+    script_name="portal_scanner.py",
+)
 from config import (  # noqa: E402
     PORTAL_COMPANIES, PORTAL_NAME_OVERRIDES,
     PORTAL_TARGET_TITLES, PORTAL_BLOCK_SUFFIXES,

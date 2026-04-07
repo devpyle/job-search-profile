@@ -1,0 +1,26 @@
+{
+  "results": [
+    {
+      "title": "Product Owner - Payments Platform",
+      "company": {"display_name": "Acme Corp"},
+      "location": {"display_name": "Remote, US"},
+      "description": "We are hiring a Product Owner to lead our payments platform.",
+      "salary_min": 130000,
+      "salary_max": 160000,
+      "salary_is_predicted": "0",
+      "created": "2026-04-01T10:00:00Z",
+      "redirect_url": "https://example.com/adzuna/job/101"
+    },
+    {
+      "title": "Senior Product Manager",
+      "company": {"display_name": "Beta Inc"},
+      "location": {"display_name": "New York, NY"},
+      "description": "Join our team building APIs for fintech partners.",
+      "salary_min": null,
+      "salary_max": null,
+      "salary_is_predicted": "1",
+      "created": "2026-03-30T14:00:00Z",
+      "redirect_url": "https://example.com/adzuna/job/102"
+    }
+  ]
+}

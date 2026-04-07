@@ -1,0 +1,16 @@
+{
+  "jobs": [
+    {
+      "title": "Product Owner — Payments",
+      "absolute_url": "https://boards.greenhouse.io/testco/jobs/1001",
+      "location": {"name": "Remote, US"},
+      "updated_at": "2026-04-01T10:00:00Z"
+    },
+    {
+      "title": "Software Engineer",
+      "absolute_url": "https://boards.greenhouse.io/testco/jobs/1002",
+      "location": {"name": "Remote"},
+      "updated_at": "2026-04-01T09:00:00Z"
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "web": {
+    "results": [
+      {
+        "title": "Product Owner — API Platform (Remote)",
+        "description": "Acme Corp is looking for a PO to own the API platform roadmap.",
+        "url": "https://boards.greenhouse.io/acme/jobs/201"
+      },
+      {
+        "title": "Senior Product Manager — Fintech",
+        "description": "Beta Inc needs a PM for their payments team.",
+        "url": "https://jobs.lever.co/beta/202"
+      }
+    ]
+  }
+}

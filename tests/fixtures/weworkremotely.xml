@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>WeWorkRemotely — Product Jobs</title>
+    <item>
+      <title>Product Owner at Acme Corp</title>
+      <link>https://weworkremotely.com/jobs/501</link>
+      <description>Lead product for our remote-first team.</description>
+      <pubDate>Tue, 01 Apr 2026 12:00:00 GMT</pubDate>
+    </item>
+    <item>
+      <title>Senior PM at Beta Inc</title>
+      <link>https://weworkremotely.com/jobs/502</link>
+      <description>Drive product strategy for fintech APIs.</description>
+      <pubDate>Mon, 31 Mar 2026 10:00:00 GMT</pubDate>
+    </item>
+  </channel>
+</rss>

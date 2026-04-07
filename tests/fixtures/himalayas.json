@@ -1,0 +1,24 @@
+[
+  {
+    "title": "Product Owner — SaaS Platform",
+    "companyName": "Acme Corp",
+    "description": "Own product for our SaaS platform.",
+    "excerpt": "SaaS PO role",
+    "applicationLink": "https://himalayas.app/jobs/601",
+    "minSalary": 125000,
+    "maxSalary": 155000,
+    "currency": "USD",
+    "pubDate": "2026-04-01"
+  },
+  {
+    "title": "Product Manager — API",
+    "companyName": "Beta Inc",
+    "description": "Manage API product strategy.",
+    "excerpt": "API PM role",
+    "applicationLink": "https://himalayas.app/jobs/602",
+    "minSalary": 0,
+    "maxSalary": 0,
+    "currency": "USD",
+    "pubDate": "2026-03-30"
+  }
+]

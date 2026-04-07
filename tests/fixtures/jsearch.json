@@ -1,0 +1,32 @@
+{
+  "data": [
+    {
+      "job_title": "Product Owner — Enterprise Platform",
+      "employer_name": "Acme Corp",
+      "job_description": "Own enterprise platform product strategy.",
+      "job_city": "Remote",
+      "job_state": null,
+      "job_is_remote": true,
+      "job_min_salary": 130000,
+      "job_max_salary": 165000,
+      "job_salary_period": "YEAR",
+      "job_posted_at_timestamp": 1743465600,
+      "job_apply_link": "https://example.com/jsearch/job/901",
+      "job_google_link": "https://google.com/jobs/901"
+    },
+    {
+      "job_title": "Product Manager",
+      "employer_name": "Beta Inc",
+      "job_description": "PM for SaaS product.",
+      "job_city": "Testville",
+      "job_state": "NC",
+      "job_is_remote": false,
+      "job_min_salary": null,
+      "job_max_salary": null,
+      "job_salary_period": null,
+      "job_posted_at_timestamp": 1743379200,
+      "job_apply_link": "https://example.com/jsearch/job/902",
+      "job_google_link": null
+    }
+  ]
+}

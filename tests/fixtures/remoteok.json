@@ -1,0 +1,23 @@
+[
+  {"id": "meta", "legal": "RemoteOK API"},
+  {
+    "id": "701",
+    "position": "Product Owner — Payments",
+    "company": "Acme Corp",
+    "description": "Own payments product for our fintech platform.",
+    "url": "https://remoteok.com/jobs/701",
+    "salary_min": 130000,
+    "salary_max": 160000,
+    "date": "2026-04-01"
+  },
+  {
+    "id": "702",
+    "position": "Product Manager",
+    "company": "Beta Inc",
+    "description": "Drive product for our remote team.",
+    "url": "https://remoteok.com/jobs/702",
+    "salary_min": null,
+    "salary_max": null,
+    "date": "2026-03-31"
+  }
+]

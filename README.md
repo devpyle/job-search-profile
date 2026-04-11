@@ -303,3 +303,9 @@ Most setup time is writing your `docs/` files. Template files showing the expect
 
 ### v1.1.0 — Feature release (2026-04-06)
 - Fit Analysis, Interview Story Bank, Portal Scanner, ATS keyword optimization
+
+---
+
+## Acknowledgements
+
+Built in collaboration with [Casey Chalfant](https://github.com/crchalfant), who contributed to the initial architecture and feature design.

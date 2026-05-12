@@ -150,11 +150,14 @@ PORTAL_TARGET_TITLES = [
 PORTAL_BLOCK_SUFFIXES = ["representative", "rep", "support agent", "support rep"]
 
 # ── UKG / ULTIPRO DIRECT SOURCE ──────────────────────────────────────────────
-# Companies that host careers on recruiting.ultipro.com. Each entry is a
-# (tenant, board_id, display_name) tuple. Find them by visiting a company's
-# UKG-hosted careers page — the URL pattern is:
-#   https://recruiting.ultipro.com/{tenant}/JobBoard/{board_id}/
-# Leave empty to skip UKG.
+# Companies hosting careers on UKG. Each entry is either:
+#   (tenant, board_id, display_name)
+#   (tenant, board_id, display_name, subdomain)   # "recruiting" or "recruiting2"
+# When subdomain is omitted, both are tried. URL pattern:
+#   https://{subdomain}.ultipro.com/{tenant}/JobBoard/{board_id}/
+# Leave empty to skip UKG. UKG is used heavily by credit unions and small/mid
+# banks plus some SaaS — bigger fintechs typically use Greenhouse/Lever/Ashby.
 UKG_COMPANIES = [
     # ("ABC1234TENANT", "11111111-2222-3333-4444-555555555555", "Example Company"),
+    # ("XYZ9999OTHER",  "22222222-3333-4444-5555-666666666666", "Example Co 2", "recruiting2"),
 ]

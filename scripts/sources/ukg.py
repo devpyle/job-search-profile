@@ -1,11 +1,15 @@
 """UKG/UltiPro direct source — scrapes recruiting.ultipro.com job boards.
 
-Each company that hosts on UKG has a board at:
+Each company that hosts on UKG has a board at one of:
     https://recruiting.ultipro.com/{tenant}/JobBoard/{board_id}/
+    https://recruiting2.ultipro.com/{tenant}/JobBoard/{board_id}/
 
-Configure UKG_COMPANIES in config.py as a list of (tenant, board_id, display_name)
-tuples. Find the tenant + board_id by visiting a company's UKG-hosted careers page
-and reading the URL.
+Configure UKG_COMPANIES in config.py as a list of either:
+    (tenant, board_id, display_name)
+    (tenant, board_id, display_name, subdomain)   # subdomain = "recruiting" or "recruiting2"
+
+When the subdomain is omitted, "recruiting" is used and "recruiting2" is tried
+as a fallback if the first request 404s.
 """
 
 import sys
@@ -38,11 +42,16 @@ def _title_match(title: str) -> bool:
 
 
 def _location_string(item: dict) -> str:
-    loc = item.get("primaryLocation") or item.get("PrimaryLocation") or {}
+    locs = item.get("Locations") or item.get("locations") or []
+    if not locs:
+        return ""
+    addr = (locs[0] or {}).get("Address") or {}
+    state = addr.get("State") or {}
+    country = addr.get("Country") or {}
     parts = [
-        loc.get("city") or loc.get("City"),
-        loc.get("state") or loc.get("State"),
-        loc.get("country") or loc.get("Country"),
+        addr.get("City"),
+        state.get("Name") or state.get("Code"),
+        country.get("Name") or country.get("Code"),
     ]
     return ", ".join(p for p in parts if p)
 
@@ -55,49 +64,66 @@ def search_ukg() -> list[Job]:
     boards_hit = 0
     for entry in UKG_COMPANIES:
         try:
-            tenant, board_id, display = entry
+            if len(entry) == 4:
+                tenant, board_id, display, subdomain = entry
+                subdomains = [subdomain]
+            elif len(entry) == 3:
+                tenant, board_id, display = entry
+                subdomains = ["recruiting", "recruiting2"]
+            else:
+                raise ValueError("wrong tuple length")
         except (ValueError, TypeError):
-            log(f"Bad UKG_COMPANIES entry (expected (tenant, board_id, name)): {entry!r}",
+            log(f"Bad UKG_COMPANIES entry (expected (tenant, board_id, name) or +subdomain): {entry!r}",
                 source="UKG")
             continue
 
-        base = f"https://recruiting.ultipro.com/{tenant}/JobBoard/{board_id}"
-        try:
-            r = requests.post(
-                f"{base}/SearchJobs/",
-                json={
-                    "opportunitySearch": {
-                        "Top": 50, "Skip": 0,
-                        "QueryString": "",
-                        "OrderBy": [{"Value": "postedDateDesc"}],
-                    }
-                },
-                timeout=10,
-                headers={
-                    "User-Agent": "Mozilla/5.0",
-                    "Accept": "application/json",
-                    "Content-Type": "application/json",
-                },
-            )
-            if r.status_code != 200:
+        r = None
+        base = None
+        for sub in subdomains:
+            try_base = f"https://{sub}.ultipro.com/{tenant}/JobBoard/{board_id}"
+            try:
+                r = requests.post(
+                    f"{try_base}/JobBoardView/LoadSearchResults",
+                    json={
+                        "opportunitySearch": {
+                            "Top": 50, "Skip": 0,
+                            "QueryString": "",
+                            "OrderBy": [{"Value": "postedDateDesc"}],
+                        }
+                    },
+                    timeout=10,
+                    headers={
+                        "User-Agent": "Mozilla/5.0",
+                        "Accept": "application/json",
+                        "Content-Type": "application/json",
+                    },
+                )
+            except Exception as e:
+                log(f"Error ({display} @ {sub}): {e}", source="UKG")
+                r = None
                 continue
-            opportunities = r.json().get("opportunities") or r.json().get("Opportunities") or []
+            if r.status_code == 200:
+                base = try_base
+                break
+
+        if not r or r.status_code != 200 or base is None:
+            continue
+
+        try:
+            payload = r.json()
+            opportunities = payload.get("opportunities") or payload.get("Opportunities") or []
             count_before = len(jobs)
             for item in opportunities:
-                title = item.get("title") or item.get("Title") or ""
+                title = item.get("Title") or item.get("title") or ""
                 if not _title_match(title):
                     continue
-                opp_id = (
-                    item.get("opportunityId")
-                    or item.get("OpportunityId")
-                    or item.get("id")
-                    or ""
-                )
-                posted = (item.get("postedDate") or item.get("PostedDate") or "")[:10]
+                opp_id = item.get("Id") or item.get("id") or ""
+                posted = (item.get("PostedDate") or item.get("postedDate") or "")[:10]
                 jobs.append(Job(
                     title=title,
                     company=display,
                     location=_location_string(item),
+                    description=item.get("BriefDescription") or "",
                     url=f"{base}/OpportunityDetail?opportunityId={opp_id}",
                     posted=posted,
                     source="UKG",

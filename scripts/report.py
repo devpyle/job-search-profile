@@ -19,6 +19,7 @@ from filters import (  # noqa: E402
     BLOCKED_COMPANIES, is_category_page, is_non_us_location,
     is_onsite_non_local, is_bad_scrape, is_local_raleigh, is_staffing,
     is_below_salary_floor, is_closed_listing, is_wrong_title, is_broken_url,
+    is_stale,
 )
 from rating import TIER_ORDER, rate_with_claude, _print_lock  # noqa: E402
 from sources.linkedin import li_enrich_descriptions  # noqa: E402
@@ -125,6 +126,9 @@ def build_report(jobs: list[Job], seen: dict, now: datetime,
             continue
         if is_closed_listing(job.description):
             _reject(job, "closed_listing")
+            continue
+        if is_stale(job.posted):
+            _reject(job, "stale")
             continue
         if is_broken_url(job.url):
             _reject(job, "broken_url")

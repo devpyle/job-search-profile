@@ -70,19 +70,40 @@
 </table>
 
 {% if filter_stats %}
-<h3>Filters (this run)</h3>
-<table class="health-table">
+<h3>Filters (this run) <span class="hint">click a row to see which jobs were caught</span></h3>
+<table class="health-table filter-table">
   <thead>
     <tr>
       <th>Filter</th>
       <th>Jobs caught</th>
+      <th>Reason</th>
     </tr>
   </thead>
   <tbody>
     {% for f in filter_stats %}
-    <tr>
-      <td>{{ f.filter_name.replace('_', ' ')|title }}</td>
+    <tr class="filter-row" data-filter="{{ f.filter_name }}">
+      <td><span class="disclose">▸</span> {{ f.filter_name.replace('_', ' ')|title }}</td>
       <td>{{ f.count }}</td>
+      <td class="filter-reason-cell">{{ skip_reasons.get(f.filter_name, '—') }}</td>
+    </tr>
+    <tr class="filter-detail" id="detail-{{ f.filter_name }}" hidden>
+      <td colspan="3">
+        {% set jobs = filter_jobs.get(f.filter_name, []) %}
+        {% if jobs %}
+        <ul class="filter-job-list">
+          {% for j in jobs %}
+          <li>
+            <strong>{{ j.title }}</strong>
+            {% if j.company %} — {{ j.company }}{% endif %}
+            {% if j.source %} <span class="muted">[{{ j.source }}]</span>{% endif %}
+            {% if j.url %}<a href="{{ j.url }}" target="_blank" rel="noopener noreferrer">open</a>{% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p class="muted">No per-job records for this filter.</p>
+        {% endif %}
+      </td>
     </tr>
     {% endfor %}
   </tbody>
@@ -114,4 +135,20 @@
 {% endif %}
 
 {% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+  document.querySelectorAll('.filter-row').forEach(row => {
+    row.addEventListener('click', () => {
+      const name = row.dataset.filter;
+      const detail = document.getElementById('detail-' + name);
+      if (!detail) return;
+      const open = !detail.hidden;
+      detail.hidden = open;
+      const disc = row.querySelector('.disclose');
+      if (disc) disc.textContent = open ? '▸' : '▾';
+    });
+  });
+</script>
 {% endblock %}

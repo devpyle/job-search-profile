@@ -46,6 +46,7 @@ from sources.remote_boards import (  # noqa: F401
 )
 from sources.jsearch import search_jsearch  # noqa: F401
 from sources.ats import search_ats_companies  # noqa: F401
+from sources.ukg import search_ukg  # noqa: F401
 from report import build_report, write_debug_log, send_email  # noqa: F401
 from startup import validate
 
@@ -196,6 +197,7 @@ def main(force_run: bool = False):
         return jobs
 
     ats_jobs       = _search("ATS", search_ats_companies)
+    ukg_jobs       = _search("UKG", search_ukg)
     adzuna_jobs    = _search("Adzuna", search_adzuna)
     jobicy_jobs    = _search("Jobicy", search_jobicy)
     himalayas_jobs = _search("Himalayas", search_himalayas)
@@ -219,7 +221,7 @@ def main(force_run: bool = False):
     wwr_jobs    = _search("WeWorkRemotely", search_weworkremotely)
 
     all_jobs = (
-        ats_jobs + adzuna_jobs + jobicy_jobs + himalayas_jobs + remoteok_jobs
+        ats_jobs + ukg_jobs + adzuna_jobs + jobicy_jobs + himalayas_jobs + remoteok_jobs
         + remotive_jobs + jsearch_jobs + linkedin_jobs + brave_jobs + tavily_jobs
         + wwr_jobs
     )

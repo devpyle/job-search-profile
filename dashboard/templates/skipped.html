@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Skipped{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h2>Skipped</h2>
+</div>
+
+{% if not run %}
+<div class="empty-state">
+  <p>No radar runs recorded yet. Run <code>python scripts/job_radar.py --run</code> to populate.</p>
+</div>
+{% else %}
+
+<div class="health-summary">
+  <div class="health-stat">
+    <span class="health-label">Last run</span>
+    <span class="health-value">{{ run.started_at[:16].replace('T',' ') }}</span>
+  </div>
+  <div class="health-stat">
+    <span class="health-label">Total filtered</span>
+    <span class="health-value">{{ total }}</span>
+  </div>
+  <div class="health-stat">
+    <span class="health-label">Filter types</span>
+    <span class="health-value">{{ groups|length }}</span>
+  </div>
+</div>
+
+{% if not groups %}
+<div class="empty-state">
+  <p>Nothing was filtered in the latest run.</p>
+</div>
+{% endif %}
+
+{% for g in groups %}
+<section class="skip-group">
+  <h3>
+    <span class="skip-filter-name">{{ g.filter_name.replace('_', ' ')|title }}</span>
+    <span class="skip-count">{{ g.jobs|length }}</span>
+  </h3>
+  <p class="skip-reason">{{ g.reason }}</p>
+  <table class="health-table">
+    <thead>
+      <tr>
+        <th>Title</th>
+        <th>Company</th>
+        <th>Source</th>
+        <th>Link</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for j in g.jobs %}
+      <tr>
+        <td>{{ j.title }}</td>
+        <td>{{ j.company or "—" }}</td>
+        <td>{{ j.source or "—" }}</td>
+        <td>
+          {% if j.url %}
+            <a href="{{ j.url }}" target="_blank" rel="noopener noreferrer">open</a>
+          {% else %}—{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endfor %}
+
+{% endif %}
+{% endblock %}

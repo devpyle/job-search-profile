@@ -727,7 +727,8 @@ def health():
     db = get_db()
     latest = data.get_latest_run(db)
     if not latest:
-        return render_template("health.html", run=None, stats=[], filter_stats=[], history=[])
+        return render_template("health.html", run=None, stats=[], filter_stats=[],
+                               filter_jobs={}, skip_reasons={}, history=[])
 
     run = dict(latest)
     stats = [dict(r) for r in data.get_source_stats(db, run["id"])]
@@ -749,8 +750,44 @@ def health():
     filter_stats = [dict(r) for r in data.get_filter_stats(db, run["id"])]
     history = [dict(r) for r in data.get_recent_runs(db, days=14)]
 
+    filter_jobs: dict[str, list] = {}
+    for row in data.get_filtered_jobs(db, run["id"]):
+        filter_jobs.setdefault(row["filter_name"], []).append(dict(row))
+
+    from filters import SKIP_REASONS  # local import — filters loads config
+
     return render_template("health.html", run=run, stats=stats,
-                           filter_stats=filter_stats, history=history)
+                           filter_stats=filter_stats, history=history,
+                           filter_jobs=filter_jobs, skip_reasons=SKIP_REASONS)
+
+
+@app.route("/skipped")
+def skipped():
+    db = get_db()
+    latest = data.get_latest_run(db)
+    if not latest:
+        return render_template("skipped.html", run=None, groups=[], total=0)
+
+    run = dict(latest)
+    rows = data.get_filtered_jobs(db, run["id"])
+
+    from filters import SKIP_REASONS, explain_skip
+
+    grouped: dict[str, list[dict]] = {}
+    for row in rows:
+        grouped.setdefault(row["filter_name"], []).append(dict(row))
+
+    groups = [
+        {
+            "filter_name": name,
+            "reason": explain_skip(name),
+            "jobs": jobs,
+        }
+        for name, jobs in sorted(grouped.items(), key=lambda kv: -len(kv[1]))
+    ]
+
+    return render_template("skipped.html", run=run, groups=groups,
+                           total=len(rows), skip_reasons=SKIP_REASONS)
 
 
 @app.route("/portals")

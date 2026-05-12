@@ -47,6 +47,9 @@ REQUIRE_US_LOCATION = True
 # See https://developer.adzuna.com/ for the full list.
 ADZUNA_COUNTRY = "us"
 
+# Drop postings older than this many days. Set to 0 to disable.
+STALE_POST_DAYS = 60
+
 # ── DASHBOARD — DOCUMENT GENERATION ───────────────────────────────────────────
 
 # Job history doc filenames in docs/, newest → oldest.
@@ -145,3 +148,13 @@ PORTAL_TARGET_TITLES = [
 
 # Suffixes that disqualify a title match (e.g. "support representative").
 PORTAL_BLOCK_SUFFIXES = ["representative", "rep", "support agent", "support rep"]
+
+# ── UKG / ULTIPRO DIRECT SOURCE ──────────────────────────────────────────────
+# Companies that host careers on recruiting.ultipro.com. Each entry is a
+# (tenant, board_id, display_name) tuple. Find them by visiting a company's
+# UKG-hosted careers page — the URL pattern is:
+#   https://recruiting.ultipro.com/{tenant}/JobBoard/{board_id}/
+# Leave empty to skip UKG.
+UKG_COMPANIES = [
+    # ("ABC1234TENANT", "11111111-2222-3333-4444-555555555555", "Example Company"),
+]

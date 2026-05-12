@@ -2,12 +2,18 @@
 
 import re
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 import requests
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from config import MIN_SALARY, HOME_METRO_TERMS, HOME_STATE  # noqa: E402
+
+try:
+    from config import STALE_POST_DAYS  # noqa: E402
+except ImportError:
+    STALE_POST_DAYS = 60
 
 # ── CATEGORY / NOISE FILTERS ──────────────────────────────────────────────────
 
@@ -389,3 +395,72 @@ def is_broken_url(url: str) -> bool:
         return r.status_code >= 400
     except Exception:
         return False
+
+
+# ── STALENESS ────────────────────────────────────────────────────────────────
+
+_RELATIVE_DAYS_RE = re.compile(r"(\d+)\s*d", re.IGNORECASE)
+
+
+def _parse_posted_age_days(posted: str) -> int | None:
+    """Return job age in days from a posted-date string, or None if unparseable.
+
+    Sources emit a variety of formats: '5d ago', 'today', ISO 'YYYY-MM-DD',
+    full ISO with time, or RFC 2822 like 'Wed, 15 Jan 2024 12:00'.
+    """
+    if not posted:
+        return None
+    p = posted.strip()
+    if not p:
+        return None
+    low = p.lower()
+    if "today" in low or "just posted" in low:
+        return 0
+    m = _RELATIVE_DAYS_RE.search(low)
+    if m:
+        return int(m.group(1))
+    # Absolute ISO date — try several truncations
+    for length in (10, 16, 19):
+        try:
+            dt = datetime.fromisoformat(p[:length].replace("Z", ""))
+            if dt.tzinfo is None:
+                age = (datetime.now() - dt).days
+            else:
+                age = (datetime.now(timezone.utc) - dt).days
+            return max(age, 0)
+        except (ValueError, TypeError):
+            continue
+    return None
+
+
+def is_stale(posted: str, max_age_days: int = STALE_POST_DAYS) -> bool:
+    """True if the posting is older than max_age_days. Unknown dates pass."""
+    if not max_age_days:
+        return False
+    age = _parse_posted_age_days(posted)
+    return age is not None and age > max_age_days
+
+
+# ── HUMAN-READABLE SKIP REASONS ──────────────────────────────────────────────
+# Maps filter_name (recorded in DB and report) → plain-English explanation
+# shown in the dashboard Skipped tab and Health drilldown.
+
+SKIP_REASONS: dict[str, str] = {
+    "category_page":      "Category/listings page, not an actual job posting",
+    "virtualvocations":   "VirtualVocations aggregator listing, not a real posting",
+    "blocked_company":    "Company is on the blocked list",
+    "wrong_title":        "Title indicates wrong function or level (e.g. sales, design, support)",
+    "bad_scrape":         "Description appears to be raw HTML/JSON — scrape failed",
+    "non_us_location":    "Located outside the US",
+    "onsite_non_local":   "On-site role at a non-local metro",
+    "staffing":           "Posted by a staffing agency or recruiter, not the hiring company",
+    "below_salary_floor": f"Salary range entirely below ${MIN_SALARY // 1000}K floor",
+    "closed_listing":     "Posting marked as closed, expired, or no longer accepting",
+    "broken_url":         "Posting URL returned 4xx/5xx (dead link)",
+    "stale":              f"Posting is older than {STALE_POST_DAYS} days",
+}
+
+
+def explain_skip(filter_name: str) -> str:
+    """Return the human-readable reason for a recorded filter_name."""
+    return SKIP_REASONS.get(filter_name, filter_name.replace("_", " ").capitalize())

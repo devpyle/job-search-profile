@@ -300,6 +300,7 @@ def generate_documents(job: dict, instructions: str = "") -> dict:
     personal = _read_doc("personal-info.md")
     skills   = _read_doc("technical-skills.md")
     edu      = _read_doc("education.md")
+    projects = _read_doc("side-projects.md")
 
     history_parts = [_read_doc(f) for f in JOB_DOCS]
     history = "\n\n---\n\n".join(p for p in history_parts if p)
@@ -315,7 +316,8 @@ ADDITIONAL RULES (these override the rules above where they conflict):
 - Output format: clean Markdown — NOT HTML. The output will be converted to DOCX.
 - Jobs MUST be listed in strict chronological order, newest to oldest.
 - For each job, curate only the most relevant achievements for THIS specific role. Do not dump all bullets — select and tailor.
-- Resume structure: # Name / contact line / ## Summary / ## Experience / ### Job Title sections / ## Skills / ## Education
+- Resume structure: # Name / contact line / ## Summary / ## Experience / ### Job Title sections / ## Selected Projects (when relevant, see below) / ## Skills / ## Education
+- Selected Projects section: AFTER ## Experience, include a ## Selected Projects section IF the target role values hands-on AI, technical depth, data/ML, or a builder profile. Use the same format as jobs: ### Project Name, then a line formatted as **Type / tech** | link-or-status, then 1-2 tailored bullets. Pull ONLY from the SELECTED PROJECTS provided below. Tailor which projects appear to the role. For the Polymarket project, the codebase is private — mention it and its outcomes but never imply the source is public. Omit this whole section for pure process/BA roles where it adds nothing.
 - Cover letter: plain paragraphs only — date, greeting, 3-4 body paragraphs, sign-off. No markdown headers.
 - Respond ONLY with a valid JSON object — no preamble, no explanation, no markdown fences.
 - JSON format: {{"resume": "...", "cover_letter": "..."}}
@@ -342,6 +344,9 @@ EDUCATION:
 
 TECHNICAL SKILLS:
 {skills}
+
+SELECTED PROJECTS (self-built side projects — use for a tailored ## Selected Projects section when the role values AI, ML, technical depth, or a builder profile):
+{projects}
 
 WORK HISTORY (newest to oldest — use in this order, do not reorder):
 {history}

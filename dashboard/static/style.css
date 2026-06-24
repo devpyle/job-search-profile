@@ -196,6 +196,7 @@ main { padding: 1.5rem; }
 /* ── JOB CARD ──────────────────────────────────────────────────────────────── */
 .job-card {
   display: flex;
+  flex-shrink: 0;
   background: var(--surface2);
   border: 1px solid var(--border);
   border-radius: 8px;

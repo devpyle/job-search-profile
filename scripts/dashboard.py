@@ -90,6 +90,18 @@ app = Flask(
 )
 app.secret_key = "job-search-dashboard-local"
 
+
+@app.after_request
+def no_cache_html(response):
+    # Pages are always rendered fresh from the DB / radar reports. Without this,
+    # browsers heuristically cache the HTML and a normal refresh serves a stale
+    # page (e.g. radar jobs appearing frozen on the day first loaded). Static
+    # assets keep their default caching.
+    if response.mimetype == "text/html":
+        response.headers["Cache-Control"] = "no-store, must-revalidate"
+    return response
+
+
 # ── DATABASE ──────────────────────────────────────────────────────────────────
 
 def get_db():
@@ -310,6 +322,7 @@ ADDITIONAL RULES (these override the rules above where they conflict):
 - Do NOT use **bold** or any other inline emphasis inside bullet points or the summary. Plain text only for all bullets and the summary paragraph. Bold in bullets looks like AI wrote it.
 - Use - for bullet points.
 - Company name and dates go on the line directly below the ### Job Title line, formatted as: **Company Name** | Location | Start – End
+- Skills section: group skills into 4-6 labeled categories, ONE category per line, formatted as: **Category:** skill, skill, skill (for example **API & Integration:** REST, GraphQL, Swagger, Azure APIM). Do not output skills as one long comma list. Tailor the category labels and contents to the target role.
 
 ATS KEYWORD OPTIMIZATION:
 Before writing, extract 15-20 key terms from the job description — specific technologies, methodologies, domain concepts, and role-specific phrases the ATS will scan for. Then naturally weave those terms into the resume and cover letter by reformulating existing experience to use the JD's vocabulary. Rules:
@@ -541,6 +554,349 @@ def markdown_to_docx(md_text: str) -> Document:
         i += 1
 
     return doc
+
+# ── STYLED HTML EXPORT (matches davidmyers.work/resume design) ────────────────
+
+RESUME_CSS = """
+:root {
+  --paper: #f7f4ee; --ink: #1a1714; --ink-soft: #45403a; --ink-faint: #837b6f;
+  --line: #ddd5c8; --accent: #0b5d52; --white: #fffdf9;
+  --display: "Fraunces", Georgia, serif;
+  --body: "Hanken Grotesk", -apple-system, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, monospace;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--paper); color: var(--ink);
+  font-family: var(--body); line-height: 1.5; font-size: 15px;
+  -webkit-font-smoothing: antialiased;
+}
+.toolbar {
+  position: sticky; top: 0; z-index: 10;
+  background: color-mix(in srgb, var(--paper) 90%, transparent);
+  backdrop-filter: blur(8px); border-bottom: 1px solid var(--line);
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 0.85rem clamp(1rem, 4vw, 2rem);
+}
+.toolbar button {
+  font-family: var(--body); font-size: 0.875rem; font-weight: 600;
+  border-radius: 100px; padding: 0.55rem 1.2rem; cursor: pointer;
+  border: 1px solid var(--accent); background: var(--accent); color: var(--white);
+  transition: all .2s ease;
+}
+.toolbar button:hover { background: #084840; }
+.toolbar-hint { font-family: var(--mono); font-size: 0.72rem; color: var(--ink-faint); }
+.sheet {
+  max-width: 820px; margin: 2rem auto; background: var(--white);
+  border: 1px solid var(--line); border-radius: 6px;
+  padding: clamp(2rem, 5vw, 3.4rem);
+  box-shadow: 0 20px 50px -30px rgba(26,23,20,0.35);
+}
+.r-name {
+  font-family: var(--display); font-weight: 500;
+  font-size: clamp(2rem, 5vw, 2.7rem); letter-spacing: -0.02em; margin: 0 0 0.3rem;
+}
+.r-contact {
+  font-family: var(--mono); font-size: 0.78rem; color: var(--ink-soft);
+  display: flex; flex-wrap: wrap; gap: 0.4rem 1.1rem;
+  padding-bottom: 1.4rem; border-bottom: 2px solid var(--ink); margin-top: 0.6rem;
+}
+.r-contact a { color: var(--ink-soft); text-decoration: none; }
+.r-contact a:hover { color: var(--accent); }
+.r-section { margin-top: 1.8rem; }
+.r-section > h2 {
+  font-family: var(--mono); font-size: 0.76rem; font-weight: 500;
+  letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent);
+  margin: 0 0 1rem; padding-bottom: 0.45rem; border-bottom: 1px solid var(--line);
+}
+.r-summary { color: var(--ink-soft); margin: 0; font-size: 1rem; }
+.r-job { margin-bottom: 1.4rem; page-break-inside: avoid; }
+.r-job:last-child { margin-bottom: 0; }
+.r-job-head { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; flex-wrap: wrap; }
+.r-job-title { font-family: var(--display); font-weight: 600; font-size: 1.12rem; margin: 0; letter-spacing: -0.01em; }
+.r-job-dates { font-family: var(--mono); font-size: 0.76rem; color: var(--ink-faint); white-space: nowrap; }
+.r-job-co { font-weight: 600; color: var(--ink-soft); margin: 0.1rem 0 0.6rem; font-size: 0.92rem; }
+.r-job ul, .r-generic-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 0.4rem; }
+.r-job li, .r-generic-list li { position: relative; padding-left: 1.1rem; color: var(--ink-soft); font-size: 0.93rem; line-height: 1.5; }
+.r-job li::before, .r-generic-list li::before { content: "\\2013"; position: absolute; left: 0; color: var(--accent); }
+.r-skills { display: grid; gap: 0.6rem; }
+.r-skill-row { display: grid; grid-template-columns: 175px 1fr; gap: 0.8rem; align-items: baseline; }
+.r-skill-cat { font-family: var(--mono); font-size: 0.74rem; color: var(--accent); letter-spacing: 0.01em; }
+.r-skill-list { color: var(--ink-soft); font-size: 0.92rem; margin: 0; }
+.r-cl-body p { color: var(--ink-soft); margin: 0 0 0.8rem; }
+@media print {
+  @page { margin: 14mm; }
+  body { background: #fff; font-size: 10.5pt; line-height: 1.4; }
+  .toolbar { display: none; }
+  .sheet { margin: 0; max-width: none; border: none; border-radius: 0; box-shadow: none; padding: 0; background: #fff; }
+  .r-name { font-size: 22pt; }
+  .r-contact { border-bottom-color: #000; }
+  .r-section { margin-top: 14pt; }
+  .r-job { margin-bottom: 11pt; }
+  a { color: #000 !important; text-decoration: none; }
+  .r-skill-row { grid-template-columns: 150px 1fr; }
+}
+@media (max-width: 560px) { .r-skill-row { grid-template-columns: 1fr; gap: 0.15rem; } }
+"""
+
+_HTML_SHELL = """<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>__TITLE__</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<style>__CSS__</style></head>
+<body>
+<div class="toolbar">
+  <span class="toolbar-hint">Tip: print &rarr; "Save as PDF" (margins: Default, background graphics: on)</span>
+  <button class="print" type="button" onclick="window.print()">Save as PDF</button>
+</div>
+<article class="sheet">__BODY__</article>
+</body></html>"""
+
+
+def _inline_html(text: str) -> str:
+    text = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    text = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", text)
+    text = re.sub(r"\*(.+?)\*", r"<em>\1</em>", text)
+    return text
+
+
+def _strip_md(s: str) -> str:
+    return s.replace("**", "").replace("*", "").strip()
+
+
+def _render_contact(lines: list[str]) -> str:
+    parts = []
+    for ln in lines:
+        for piece in ln.split("|"):
+            piece = _strip_md(piece)
+            if piece:
+                parts.append(piece)
+    spans = []
+    for p in parts:
+        safe = _inline_html(p)
+        low  = p.lower()
+        if "@" in p and " " not in p:
+            spans.append(f'<a href="mailto:{p}">{safe}</a>')
+        elif low.startswith("http") or "linkedin.com" in low or low.startswith("www.") or ".work" in low or ".io" in low:
+            href = p if low.startswith("http") else "https://" + p
+            spans.append(f'<a href="{href}" target="_blank" rel="noopener">{safe}</a>')
+        else:
+            spans.append(f"<span>{safe}</span>")
+    return "\n".join(spans)
+
+
+def _parse_job_meta(meta: str):
+    """`**Company** | Location | Start - End` -> (company, location, dates)."""
+    parts = [_strip_md(p) for p in meta.split("|")]
+    parts = [p for p in parts if p]
+    if len(parts) >= 3:
+        return parts[0], " · ".join(parts[1:-1]), parts[-1]
+    if len(parts) == 2:
+        if any(ch.isdigit() for ch in parts[1]):
+            return parts[0], "", parts[1]
+        return parts[0], parts[1], ""
+    if parts:
+        return parts[0], "", ""
+    return "", "", ""
+
+
+def _render_jobs(body: list[str]) -> str:
+    jobs, cur = [], None
+    for raw in body:
+        s = raw.strip()
+        if s.startswith("### "):
+            if cur:
+                jobs.append(cur)
+            cur = {"title": s[4:].strip(), "meta": "", "bullets": []}
+        elif cur is not None:
+            if s.startswith("- "):
+                cur["bullets"].append(s[2:].strip())
+            elif s and not cur["meta"] and not s.startswith("#"):
+                cur["meta"] = s
+    if cur:
+        jobs.append(cur)
+
+    out = []
+    for job in jobs:
+        company, location, dates = _parse_job_meta(job["meta"])
+        co = f"{company} · {location}" if company and location else (company or location)
+        out.append('<div class="r-job"><div class="r-job-head">')
+        out.append(f'<h3 class="r-job-title">{_inline_html(job["title"])}</h3>')
+        if dates:
+            out.append(f'<span class="r-job-dates">{_inline_html(dates)}</span>')
+        out.append("</div>")
+        if co:
+            out.append(f'<p class="r-job-co">{_inline_html(co)}</p>')
+        if job["bullets"]:
+            out.append("<ul>")
+            out += [f"<li>{_inline_html(b)}</li>" for b in job["bullets"]]
+            out.append("</ul>")
+        out.append("</div>")
+    return "\n".join(out)
+
+
+def _split_skill(item: str):
+    for pat in (r"\*\*(.+?)\*\*\s*[:—–-]\s*(.+)", r"\*\*(.+?)\*\*\s+(.+)",
+                r"([A-Za-z][A-Za-z &/]{2,30}?):\s+(.+)"):
+        m = re.match(pat, item)
+        if m:
+            return m.group(1).strip(), m.group(2).strip()
+    return "", item
+
+
+def _render_skills(body: list[str]) -> str:
+    out = ['<div class="r-skills">']
+    for raw in body:
+        s = raw.strip()
+        if not s:
+            continue
+        item = s[2:].strip() if s.startswith("- ") else s
+        cat, lst = _split_skill(item)
+        if cat:
+            out.append('<div class="r-skill-row">')
+            out.append(f'<span class="r-skill-cat">{_inline_html(cat)}</span>')
+            out.append(f'<p class="r-skill-list">{_inline_html(lst)}</p>')
+            out.append("</div>")
+        else:
+            out.append(f'<p class="r-skill-list">{_inline_html(item)}</p>')
+    out.append("</div>")
+    return "\n".join(out)
+
+
+def _render_generic(body: list[str], summary: bool = False) -> str:
+    out, bullets, para = [], [], []
+
+    def flush_para():
+        if para:
+            cls = ' class="r-summary"' if summary else ""
+            out.append(f'<p{cls}>{_inline_html(" ".join(para).strip())}</p>')
+            para.clear()
+
+    def flush_bullets():
+        if bullets:
+            out.append('<ul class="r-generic-list">')
+            out.extend(f"<li>{_inline_html(b)}</li>" for b in bullets)
+            out.append("</ul>")
+            bullets.clear()
+
+    for raw in body:
+        s = raw.strip()
+        if not s:
+            flush_para()
+        elif s.startswith("- "):
+            flush_para()
+            bullets.append(s[2:].strip())
+        else:
+            flush_bullets()
+            para.append(s)
+    flush_para()
+    flush_bullets()
+    return "\n".join(out)
+
+
+def _md_resume_body(md_text: str) -> str:
+    lines = md_text.split("\n")
+    name, contact, i = "", [], 0
+    while i < len(lines):
+        s = lines[i].strip()
+        if s.startswith("# ") and not s.startswith("## "):
+            name = s[2:].strip()
+            i += 1
+            break
+        i += 1
+    while i < len(lines):
+        s = lines[i].strip()
+        if s.startswith("## ") or s.startswith("### "):
+            break
+        if s and not s.startswith("#"):
+            contact.append(s)
+        i += 1
+
+    sections, cur_title, cur_lines = [], None, []
+    while i < len(lines):
+        s = lines[i].strip()
+        if s.startswith("## ") and not s.startswith("### "):
+            if cur_title is not None:
+                sections.append((cur_title, cur_lines))
+            cur_title, cur_lines = s[3:].strip(), []
+        elif cur_title is not None:
+            cur_lines.append(lines[i])
+        i += 1
+    if cur_title is not None:
+        sections.append((cur_title, cur_lines))
+
+    out = ["<header>", f'<h1 class="r-name">{_inline_html(name)}</h1>']
+    if contact:
+        out.append(f'<div class="r-contact">{_render_contact(contact)}</div>')
+    out.append("</header>")
+
+    for title, sbody in sections:
+        out.append('<section class="r-section">')
+        out.append(f"<h2>{_inline_html(title)}</h2>")
+        if any(l.strip().startswith("### ") for l in sbody):
+            out.append(_render_jobs(sbody))
+        elif title.strip().lower().startswith("skill"):
+            out.append(_render_skills(sbody))
+        else:
+            out.append(_render_generic(sbody, summary=(title.strip().lower() == "summary")))
+        out.append("</section>")
+    return "\n".join(out)
+
+
+def _md_coverletter_body(md_text: str) -> str:
+    out, para = ['<div class="r-cl-body">'], []
+
+    def flush():
+        if para:
+            out.append(f'<p>{_inline_html(" ".join(para).strip())}</p>')
+            para.clear()
+
+    for raw in md_text.split("\n"):
+        s = raw.strip()
+        if not s:
+            flush()
+        elif s.startswith("#"):
+            continue
+        else:
+            para.append(s)
+    flush()
+    out.append("</div>")
+    return "\n".join(out)
+
+
+def markdown_to_html(md_text: str, kind: str = "resume", title: str = "Resume") -> str:
+    body = _md_coverletter_body(md_text) if kind == "coverletter" else _md_resume_body(md_text)
+    return (_HTML_SHELL
+            .replace("__TITLE__", title)
+            .replace("__CSS__", RESUME_CSS)
+            .replace("__BODY__", body))
+
+
+def html_to_pdf_bytes(html: str) -> bytes:
+    """Render styled HTML to a PDF with headless Chromium (Playwright).
+    Matches the browser 'Save as PDF' output exactly: same engine, fonts, and
+    @media print rules. The toolbar is hidden by the print stylesheet."""
+    from playwright.sync_api import sync_playwright
+    with sync_playwright() as p:
+        browser = p.chromium.launch(args=["--no-sandbox"])
+        try:
+            page = browser.new_page()
+            page.set_content(html, wait_until="load")
+            try:
+                page.evaluate("() => document.fonts.ready")  # let web fonts settle
+            except Exception:
+                pass
+            return page.pdf(
+                print_background=True,
+                prefer_css_page_size=True,  # honor the @page { margin } in print CSS
+                margin={"top": "0", "bottom": "0", "left": "0", "right": "0"},
+            )
+        finally:
+            browser.close()
+
 
 # ── STORY BANK PARSER ─────────────────────────────────────────────────────────
 
@@ -1123,6 +1479,58 @@ def download_doc(job_id, doc_id, doc_type):
     )
 
 
+@app.route("/jobs/<job_id>/documents/<int:doc_id>/styled/<doc_type>")
+def view_styled(job_id, doc_id, doc_type):
+    """Serve a styled HTML resume/cover letter (matches davidmyers.work design).
+    Opens inline so the user can print to PDF."""
+    db  = get_db()
+    job = data.get_job(db, job_id)
+    doc = data.get_document(db, doc_id, job_id)
+    if not job or not doc:
+        return "Not found", 404
+
+    if doc_type == "resume":
+        return markdown_to_html(doc["resume_md"] or "", kind="resume",
+                                title=f"{job['company']} — Resume")
+    return markdown_to_html(doc["coverletter_md"] or "", kind="coverletter",
+                            title=f"{job['company']} — Cover Letter")
+
+
+@app.route("/jobs/<job_id>/documents/<int:doc_id>/pdf/<doc_type>")
+def download_pdf(job_id, doc_id, doc_type):
+    """One-click styled PDF (headless Chromium render of the styled HTML)."""
+    db  = get_db()
+    job = data.get_job(db, job_id)
+    doc = data.get_document(db, doc_id, job_id)
+    if not job or not doc:
+        return "Not found", 404
+
+    if doc_type == "resume":
+        html   = markdown_to_html(doc["resume_md"] or "", kind="resume",
+                                  title=f"{job['company']} — Resume")
+        prefix = "Resume"
+    else:
+        html   = markdown_to_html(doc["coverletter_md"] or "", kind="coverletter",
+                                  title=f"{job['company']} — Cover Letter")
+        prefix = "CoverLetter"
+
+    safe_company = re.sub(r"[^\w]", "_", job["company"] or "")[:30]
+    safe_title   = re.sub(r"[^\w]", "_", job["title"]   or "")[:30]
+    filename     = f"{prefix}_{safe_company}_{safe_title}_v{doc['version']}.pdf"
+    tmp_path     = EXPORT_DIR / filename
+
+    try:
+        pdf_bytes = html_to_pdf_bytes(html)
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"PDF render failed: {e}"}), 500
+
+    with open(tmp_path, "wb") as f:
+        f.write(pdf_bytes)
+
+    return send_file(str(tmp_path), as_attachment=True,
+                     download_name=filename, mimetype="application/pdf")
+
+
 @app.route("/jobs/<job_id>/delete", methods=["POST"])
 def delete_job(job_id):
     db = get_db()
@@ -1138,4 +1546,4 @@ if __name__ == "__main__":
     print("  Job Search Dashboard")
     print("  http://localhost:5000")
     print("─" * 50)
-    app.run(debug=False, host="127.0.0.1", port=5000)
+    app.run(debug=False, host="127.0.0.1", port=5000, threaded=True)

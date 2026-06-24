@@ -40,8 +40,12 @@
     <div class="panel-header">
       <span>📄 Resume</span>
       <div class="panel-actions">
+        <a href="{{ url_for('download_pdf', job_id=job.id, doc_id=doc.id, doc_type='resume') }}"
+           class="btn-sm">⬇ PDF</a>
+        <a href="{{ url_for('view_styled', job_id=job.id, doc_id=doc.id, doc_type='resume') }}"
+           target="_blank" class="btn-sm">🖨 Preview</a>
         <a href="{{ url_for('download_doc', job_id=job.id, doc_id=doc.id, doc_type='resume') }}"
-           class="btn-sm">⬇ Download DOCX</a>
+           class="btn-sm">⬇ DOCX</a>
       </div>
     </div>
     <textarea class="doc-editor" id="resume-editor" spellcheck="true">{{ doc.resume_md or '' }}</textarea>
@@ -51,8 +55,12 @@
     <div class="panel-header">
       <span>✉️ Cover Letter</span>
       <div class="panel-actions">
+        <a href="{{ url_for('download_pdf', job_id=job.id, doc_id=doc.id, doc_type='coverletter') }}"
+           class="btn-sm">⬇ PDF</a>
+        <a href="{{ url_for('view_styled', job_id=job.id, doc_id=doc.id, doc_type='coverletter') }}"
+           target="_blank" class="btn-sm">🖨 Preview</a>
         <a href="{{ url_for('download_doc', job_id=job.id, doc_id=doc.id, doc_type='coverletter') }}"
-           class="btn-sm">⬇ Download DOCX</a>
+           class="btn-sm">⬇ DOCX</a>
       </div>
     </div>
     <textarea class="doc-editor" id="cl-editor" spellcheck="true">{{ doc.coverletter_md or '' }}</textarea>

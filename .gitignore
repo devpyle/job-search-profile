@@ -22,3 +22,6 @@ input/raw-notes/
 config.py
 # Personal profile docs — keep local only, templates are in docs/templates/
 docs/*.md
+.gstack/
+# Personal LinkedIn rewrite + generated images — keep local only
+output/linkedin/

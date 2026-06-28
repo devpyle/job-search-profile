@@ -402,15 +402,27 @@ def is_broken_url(url: str) -> bool:
 _RELATIVE_DAYS_RE = re.compile(r"(\d+)\s*d", re.IGNORECASE)
 
 
-def _parse_posted_age_days(posted: str) -> int | None:
-    """Return job age in days from a posted-date string, or None if unparseable.
+def _parse_posted_age_days(posted) -> int | None:
+    """Return job age in days from a posted-date value, or None if unparseable.
 
     Sources emit a variety of formats: '5d ago', 'today', ISO 'YYYY-MM-DD',
-    full ISO with time, or RFC 2822 like 'Wed, 15 Jan 2024 12:00'.
+    full ISO with time, RFC 2822 like 'Wed, 15 Jan 2024 12:00', or sometimes an
+    epoch timestamp as an int/float. Anything else is coerced to str and parsed.
     """
-    if not posted:
+    if posted is None:
         return None
-    p = posted.strip()
+    # Some sources emit posted as an epoch timestamp (seconds or ms), not a string.
+    if isinstance(posted, (int, float)):
+        ts = float(posted)
+        if ts <= 0:
+            return None
+        if ts > 1e12:  # milliseconds
+            ts /= 1000.0
+        try:
+            return max((datetime.now() - datetime.fromtimestamp(ts)).days, 0)
+        except (ValueError, OSError, OverflowError):
+            return None
+    p = str(posted).strip()
     if not p:
         return None
     low = p.lower()

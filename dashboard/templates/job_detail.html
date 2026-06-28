@@ -315,7 +315,7 @@ function generateDocs(jobId) {
   const status = document.getElementById("gen-status");
   const instr  = document.getElementById("gen-instructions").value.trim();
   btn.disabled    = true;
-  btn.textContent = "Generating… (this takes ~30s)";
+  btn.textContent = "Fetching posting, checking fit, writing… (~30–60s)";
   status.textContent = "";
   status.classList.remove("hidden");
 

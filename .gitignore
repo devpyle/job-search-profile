@@ -25,3 +25,5 @@ docs/*.md
 .gstack/
 # Personal LinkedIn rewrite + generated images — keep local only
 output/linkedin/
+# Personal interview prep — keep local only
+output/interview-prep/

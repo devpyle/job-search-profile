@@ -31,6 +31,9 @@
         {% if job.status == 'Applied' %}
         <button class="btn-sm btn-interviews" onclick="moveToInterviews('{{ job.id }}')" title="Move to Interview Tracker">→ Interviews</button>
         {% endif %}
+        {% if job.status not in ['Accepted', 'Rejected', 'Passed'] %}
+        <button class="btn-sm btn-close" onmousedown="event.stopPropagation()" onclick="closeJob(event, '{{ job.id }}')" title="Close — move to Passed or Rejected">✕</button>
+        {% endif %}
         <a href="{{ url_for('job_detail', job_id=job.id) }}" class="btn-sm">View</a>
       </div>
     </div>

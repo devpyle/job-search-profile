@@ -10,6 +10,7 @@ Dependencies:
 """
 
 import hashlib
+import html
 import json
 import os
 import re
@@ -21,6 +22,7 @@ from pathlib import Path
 from typing import Optional
 
 import anthropic
+import requests
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
@@ -49,6 +51,12 @@ DB_PATH     = DASH_DIR / "data" / "jobs.db"
 EXPORT_DIR  = REPO_ROOT / "output" / "documents"
 
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+
+# Env for the `claude` CLI: strip ANTHROPIC_API_KEY so the CLI uses the
+# Claude.ai (OAuth / Max subscription) login instead of billing API credits.
+# Leaving the key set both bills per-token credits and triggers the
+# "connectors are disabled" error that breaks `claude -p`.
+_CLI_ENV = {k: v for k, v in os.environ.items() if k != "ANTHROPIC_API_KEY"}
 
 # ── PERSONAL CONFIG (from config.py) ──────────────────────────────────────────
 sys.path.insert(0, str(REPO_ROOT))
@@ -294,8 +302,122 @@ def _read_doc(filename: str) -> str:
     return p.read_text(encoding="utf-8") if p.exists() else ""
 
 
-def generate_documents(job: dict, instructions: str = "") -> dict:
-    """Call Claude Sonnet to generate resume + cover letter markdown."""
+_JD_HEADERS = {
+    "User-Agent": ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+                   "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"),
+    "Accept": "text/html,application/xhtml+xml,application/json",
+    "Accept-Language": "en-US,en;q=0.9",
+}
+
+
+def _html_to_text(s: str) -> str:
+    s = re.sub(r"<[^>]+>", " ", s or "")
+    s = html.unescape(s)
+    s = re.sub(r"[ \t]+", " ", s)
+    s = re.sub(r"\n\s*\n+", "\n\n", s)
+    return s.strip()
+
+
+def _jsonld_jobposting(page: str) -> str:
+    for m in re.finditer(r'<script[^>]*application/ld\+json[^>]*>(.*?)</script>', page, re.S):
+        try:
+            d = json.loads(m.group(1))
+        except Exception:
+            continue
+        for it in (d if isinstance(d, list) else [d]):
+            if isinstance(it, dict) and it.get("@type") == "JobPosting" and it.get("description"):
+                return _html_to_text(it["description"])
+    return ""
+
+
+def fetch_job_description(url: str) -> str:
+    """Best-effort live fetch of a posting's full description.
+
+    Handles the common ATS JSON APIs (Greenhouse, Ashby, Eightfold) plus a
+    generic JSON-LD JobPosting fallback for everything else. Returns plain
+    text, or '' if nothing usable was found. Never raises.
+    """
+    if not url:
+        return ""
+    try:
+        # Greenhouse — direct board URL, or embedded on a company site via gh_jid
+        gh_id = re.search(r"gh_jid=(\d+)", url) or \
+                (re.search(r"jobs?/(\d+)", url) if "greenhouse" in url else None)
+        if gh_id:
+            token = None
+            mfor = re.search(r"[?&]for=([a-z0-9_]+)", url)
+            mtok = re.search(r"greenhouse\.io/(?:embed/job_app\?for=)?([a-z0-9_]+)/jobs?", url, re.I)
+            if mfor:
+                token = mfor.group(1)
+            elif mtok:
+                token = mtok.group(1)
+            else:
+                # Embedded on a company domain: scrape the page for the board token
+                try:
+                    page = requests.get(url, headers=_JD_HEADERS, timeout=15)
+                    t = re.search(r"for=([a-z0-9_]+)", page.text)
+                    if t:
+                        token = t.group(1)
+                except Exception:
+                    token = None
+            if token:
+                r = requests.get(
+                    f"https://boards-api.greenhouse.io/v1/boards/{token}/jobs/{gh_id.group(1)}",
+                    headers=_JD_HEADERS, timeout=15)
+                if r.ok:
+                    return _html_to_text(r.json().get("content", ""))
+
+        # Ashby: jobs.ashbyhq.com/{org}/{uuid}
+        m = re.search(r"ashbyhq\.com/([^/?]+)/([0-9a-f-]{36})", url, re.I)
+        if m:
+            r = requests.get(
+                f"https://api.ashbyhq.com/posting-api/job-board/{m.group(1)}",
+                headers=_JD_HEADERS, timeout=15)
+            if r.ok:
+                for j in r.json().get("jobs", []):
+                    if m.group(2) in json.dumps(j):
+                        return _html_to_text(j.get("descriptionPlain") or j.get("descriptionHtml", ""))
+
+        # Eightfold: apply.{company}.com/careers/job/{id}
+        m = re.search(r"(apply\.[^/]+)/careers/job/(\d+)", url, re.I)
+        if m:
+            dom = re.search(r"domain=([^&]+)", url)
+            q = f"?domain={dom.group(1)}" if dom else ""
+            r = requests.get(f"https://{m.group(1)}/api/apply/v2/jobs/{m.group(2)}{q}",
+                             headers=_JD_HEADERS, timeout=15)
+            if r.ok:
+                return _html_to_text(r.json().get("job_description", ""))
+
+        # Generic: fetch the page and parse a JSON-LD JobPosting
+        r = requests.get(url, headers=_JD_HEADERS, timeout=15)
+        if r.ok:
+            return _jsonld_jobposting(r.text)
+    except Exception:
+        return ""
+    return ""
+
+
+def ensure_job_description(db, job: dict) -> dict:
+    """If a job's stored description is missing or thin, fetch it live and
+    persist the result so generation works from the full posting."""
+    desc = (job.get("description") or "").strip()
+    if len(desc) >= 400:
+        return job
+    fetched = fetch_job_description(job.get("url") or "")
+    if fetched and len(fetched) > len(desc):
+        job = dict(job)
+        job["description"] = fetched
+        db.execute("UPDATE jobs SET description=? WHERE id=?", (fetched, job["id"]))
+        db.commit()
+    return job
+
+
+def generate_documents(job: dict, instructions: str = "", fit: Optional[dict] = None) -> dict:
+    """Call Claude to generate resume + cover letter markdown.
+
+    If a fit analysis is supplied, its gaps and summary are injected so the
+    writing proactively surfaces offsetting experience (without inventing any).
+    """
     rules    = _read_doc("resume-generation-rules.md")
     personal = _read_doc("personal-info.md")
     skills   = _read_doc("technical-skills.md")
@@ -307,6 +429,18 @@ def generate_documents(job: dict, instructions: str = "") -> dict:
 
     regen_block = f"\n\nSPECIAL INSTRUCTIONS:\n{instructions}" if instructions else ""
 
+    fit_block = ""
+    if fit:
+        summ = (fit.get("summary") or "").strip()
+        gaps = (fit.get("gaps") or fit.get("gaps_md") or "").strip()
+        if summ or gaps:
+            fit_block = f"""
+
+FIT ANALYSIS (already run for this exact candidate-and-job pairing — use it to write smarter):
+Overall assessment: {summ}
+Known gaps — address each with integrity by surfacing the strongest adjacent or transferable experience that offsets it. NEVER invent experience, and do NOT call the gaps out explicitly in the resume; just make sure the most relevant real experience is front and center:
+{gaps}"""
+
     prompt = f"""You are generating a tailored resume and cover letter for {CANDIDATE_NAME}.
 
 RESUME GENERATION RULES (follow all exactly):
@@ -316,6 +450,8 @@ ADDITIONAL RULES (these override the rules above where they conflict):
 - Output format: clean Markdown — NOT HTML. The output will be converted to DOCX.
 - Jobs MUST be listed in strict chronological order, newest to oldest.
 - For each job, curate only the most relevant achievements for THIS specific role. Do not dump all bullets — select and tailor.
+- LENGTH: target 2 pages, 3 pages absolute maximum. Never produce 4 pages. Be ruthless. Bullets per role: 4-5 for the current/most recent role, 3-4 for mid-career roles, and only 2 for roles older than ~8 years. Keep the summary to 3-4 lines. Selected Projects: at most 2 projects, 1 bullet each. When in doubt, cut the least relevant content rather than keep it.
+- BULLET LENGTH: keep every bullet CONCISE — one line, two lines maximum. Lead with the outcome or action, then drop filler clauses ("in order to", "responsible for", long trailing descriptions). A bullet that wraps to three lines is too long; tighten it.
 - Resume structure: # Name / contact line / ## Summary / ## Experience / ### Job Title sections / ## Selected Projects (when relevant, see below) / ## Skills / ## Education
 - Selected Projects section: AFTER ## Experience, include a ## Selected Projects section IF the target role values hands-on AI, technical depth, data/ML, or a builder profile. Use the same format as jobs: ### Project Name, then a line formatted as **Type / tech** | link-or-status, then 1-2 tailored bullets. Pull ONLY from the SELECTED PROJECTS provided below. Tailor which projects appear to the role. For the Polymarket project, the codebase is private — mention it and its outcomes but never imply the source is public. Omit this whole section for pure process/BA roles where it adds nothing.
 - Cover letter: plain paragraphs only — date, greeting, 3-4 body paragraphs, sign-off. No markdown headers.
@@ -334,7 +470,24 @@ Before writing, extract 15-20 key terms from the job description — specific te
 - Concentrate keywords in the Summary and the most relevant job bullets.
 - Include a Skills section that mirrors the JD's terminology where the candidate has genuine proficiency.
 - Do not keyword-stuff — every term must read naturally in context.
-{regen_block}
+
+GROUNDING — DO NOT FABRICATE (most important rule):
+Every bullet and every clause must trace to a specific achievement or metric in the WORK HISTORY below. Build bullets by SELECTING and lightly rephrasing the documented "Key achievements" and "Metrics" — do NOT write net-new accomplishments. If the JD wants something not in the work history, map it to a real documented fact or omit it. BANNED vague filler that signals fabrication: "drove adoption/alignment/cohesion/consensus", "championed", "fostered", "brought structure", "consistent communication", "stakeholder buy-in", "seamless", "synergy". Before returning, re-read EVERY bullet and delete any you cannot trace to a specific fact in the work history below.
+
+ACCURACY GUARDRAILS — ENFORCE BEFORE WRITING:
+
+AI — DAY JOB SCOPE:
+The candidate's only documented hands-on AI accomplishment in his day jobs is rolling out GitHub Copilot to one development team, reducing certain stories from 5 story points to 1. Use that fact, scoped to one team, and nothing beyond it. Do not write summary lines implying org-wide or firm-wide AI adoption. Do not frame him as an AI evangelist or AI leader at his employers. Do not say he "builds with AI" at work in any general sense. The scope was one team, one tool.
+
+AI — SIDE PROJECTS ONLY:
+Broader AI work (building LLM products, prompt engineering, shipping AI agents) belongs exclusively in the Selected Projects section. Keep it there. Never blend day-job and side-project AI experience into a unified claim or summary line.
+
+TOOL AND SKILL ACCURACY:
+Name only tools, platforms, methodologies, and certifications that appear in the candidate's documented technical skills or work history. If the JD lists a tool the candidate does not have, omit it — do not add it. If he has a genuine equivalent, name his real one instead. Never list a tool solely because the JD requests it.
+
+TAILORING DISCIPLINE:
+Lead with the candidate's true professional identity and real achievements as the backbone. Tailor by selecting which real experiences to foreground and lightly rephrasing toward the JD's vocabulary. Do not invent a new persona per role. Do not bury his core identity to chase JD keywords. Do not contort the whole narrative to mirror the posting. An over-tailored resume that reads as a different person for every job is a failure.
+{regen_block}{fit_block}
 
 CANDIDATE PERSONAL INFO:
 {personal}
@@ -362,7 +515,7 @@ Generate the resume and cover letter. Return ONLY the JSON object."""
 
     result = subprocess.run(
         ["claude", "-p", prompt],
-        capture_output=True, text=True, timeout=120,
+        capture_output=True, text=True, timeout=120, env=_CLI_ENV,
     )
     if result.returncode != 0:
         raise RuntimeError(f"claude CLI error: {result.stderr[:300]}")
@@ -427,7 +580,7 @@ No markdown fences, no preamble."""
 
     result = subprocess.run(
         ["claude", "-p", prompt],
-        capture_output=True, text=True, timeout=120,
+        capture_output=True, text=True, timeout=120, env=_CLI_ENV,
     )
     if result.returncode != 0:
         raise RuntimeError(f"claude CLI error: {result.stderr[:300]}")
@@ -630,14 +783,15 @@ body {
 .r-skill-list { color: var(--ink-soft); font-size: 0.92rem; margin: 0; }
 .r-cl-body p { color: var(--ink-soft); margin: 0 0 0.8rem; }
 @media print {
-  @page { margin: 14mm; }
-  body { background: #fff; font-size: 10.5pt; line-height: 1.4; }
+  @page { margin: 13mm; }
+  body { background: #fff; font-size: 10pt; line-height: 1.35; }
   .toolbar { display: none; }
   .sheet { margin: 0; max-width: none; border: none; border-radius: 0; box-shadow: none; padding: 0; background: #fff; }
-  .r-name { font-size: 22pt; }
+  .r-name { font-size: 20pt; }
   .r-contact { border-bottom-color: #000; }
-  .r-section { margin-top: 14pt; }
-  .r-job { margin-bottom: 11pt; }
+  .r-section { margin-top: 11pt; }
+  .r-job { margin-bottom: 8pt; }
+  .r-job ul, .r-generic-list { gap: 0.3rem; }
   a { color: #000 !important; text-decoration: none; }
   .r-skill-row { grid-template-columns: 150px 1fr; }
 }
@@ -852,14 +1006,51 @@ def _md_resume_body(md_text: str) -> str:
 
 
 def _md_coverletter_body(md_text: str) -> str:
-    out, para = ['<div class="r-cl-body">'], []
+    lines = md_text.split("\n")
+
+    # Optional letterhead: a leading `# Name` heading plus an immediately
+    # following contact line (containing | or @) render as a styled header,
+    # matching the resume. Everything after is normal letter body.
+    i = 0
+    name, contact = "", []
+    while i < len(lines):
+        s = lines[i].strip()
+        if s.startswith("# ") and not s.startswith("## "):
+            name = s[2:].strip()
+            i += 1
+            break
+        if s and not s.startswith("#"):
+            break  # body starts before any name heading; no letterhead
+        i += 1
+    if name:
+        j = i
+        while j < len(lines) and not lines[j].strip():
+            j += 1
+        if j < len(lines):
+            cand = lines[j].strip()
+            if ("|" in cand or "@" in cand) and not cand.lower().startswith("dear"):
+                contact.append(cand)
+                i = j + 1
+
+    out = []
+    if name:
+        out.append("<header>")
+        out.append(f'<h1 class="r-name">{_inline_html(name)}</h1>')
+        if contact:
+            out.append(f'<div class="r-contact">{_render_contact(contact)}</div>')
+        out.append("</header>")
+
+    out.append('<div class="r-cl-body">')
+    para = []
 
     def flush():
+        # Blank line = new paragraph; single newline within a block = line break.
+        # Keeps body paragraphs reflowing while preserving sign-off/address blocks.
         if para:
-            out.append(f'<p>{_inline_html(" ".join(para).strip())}</p>')
+            out.append("<p>" + "<br>".join(_inline_html(p) for p in para) + "</p>")
             para.clear()
 
-    for raw in md_text.split("\n"):
+    for raw in lines[i:]:
         s = raw.strip()
         if not s:
             flush()
@@ -1399,14 +1590,35 @@ def generate(job_id):
     instructions = payload.get("instructions", "").strip()
 
     try:
-        result = generate_documents(dict(job), instructions)
+        # 1) Make sure we're working from the full, live posting — not a thin
+        #    or stale stored description.
+        job = ensure_job_description(db, dict(job))
+
+        # 2) Run (or reuse) a fit analysis before writing, so generation is
+        #    gap-aware. Best-effort: never let this block document generation.
+        fit = None
+        try:
+            existing = data.get_fit_analysis(db, job_id)
+            if existing:
+                fit = dict(existing)
+            else:
+                fit = generate_fit_analysis(job)
+                data.save_fit_analysis(db, job_id, fit)
+        except Exception:
+            fit = None
+
+        # 3) Generate the documents, informed by the fit analysis.
+        result = generate_documents(job, instructions, fit)
         max_v  = data.get_max_doc_version(db, job_id)
         data.insert_document(db, job_id, max_v + 1,
                              result["resume"], result["cover_letter"], instructions)
         db.execute("UPDATE jobs SET status='Drafting' WHERE id=? AND status IN ('New','Reviewing')", (job_id,))
         db.commit()
         doc_id = db.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
-        return jsonify({"ok": True, "doc_id": doc_id, "version": max_v + 1})
+        return jsonify({
+            "ok": True, "doc_id": doc_id, "version": max_v + 1,
+            "fit_score": (fit or {}).get("match_score"),
+        })
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 

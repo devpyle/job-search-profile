@@ -47,6 +47,14 @@ When generating a resume, cover letter, or other output:
 
 New job entries should follow the existing frontmatter schema (`type`, `company`, `title`, `location`, `start`, `end`, `domain`, `keywords`) and include all standard sections. Update `technical-skills.md` if new tools were used.
 
+## Memory
+
+Two layers, both in use:
+- File-based memory under `~/.claude/projects/-home-david-claude-job-search-profile/memory/` (indexed by `MEMORY.md`) auto-loads into context each session.
+- The **clude** MCP holds the same memories (searchable) plus is the place for richer recall. At the start of a substantive task, `recall_memories` with `tags: ["job-search-profile"]` to pull relevant guardrails/state. Mirrored memories carry `source: job-search-profile/memory` and a `source_id` matching the filename.
+
+When saving a NEW memory, write it to BOTH: the file (so it keeps auto-loading via `MEMORY.md`) and clude (tag it `job-search-profile`, set `source_id` to the filename), so the two stay in sync.
+
 ## Input Directory (`input/`)
 
 Staging area for raw materials — nothing here goes into output directly. Three subfolders:

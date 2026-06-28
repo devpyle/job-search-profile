@@ -971,6 +971,21 @@ main { padding: 1.5rem; }
 }
 .btn-interviews:hover { background: var(--accent2); color: #0D0D0D; }
 
+.btn-close { color: var(--muted); padding: 1px 7px; line-height: 1.2; font-weight: 600; }
+.btn-close:hover { background: var(--red); color: #fff; border-color: var(--red); }
+
+.close-menu {
+  position: fixed; z-index: 100; background: var(--surface);
+  border: 1px solid var(--border); border-radius: 6px; padding: 4px;
+  display: flex; flex-direction: column; gap: 2px; min-width: 130px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+}
+.close-menu button {
+  background: transparent; border: none; color: var(--text); text-align: left;
+  padding: 7px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; white-space: nowrap;
+}
+.close-menu button:hover { background: var(--surface2); }
+
 /* ── Portal Scanner ────────────────────────────────────────────────────────── */
 .portal-actions { display: flex; align-items: center; gap: 1rem; }
 .portal-meta { font-size: 12px; color: var(--muted); }

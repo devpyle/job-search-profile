@@ -253,7 +253,7 @@ main { padding: 1.5rem; }
 }
 .card-source { font-size: 11px; color: #475569; }
 .card-actions { display: flex; align-items: center; gap: 4px; }
-.note-badge, .doc-badge { font-size: 11px; color: var(--muted); }
+.note-badge, .doc-badge, .prep-badge { font-size: 11px; color: var(--muted); }
 .checklist-badge { font-size: 12px; color: var(--accent2); cursor: default; }
 
 .drag-ghost { opacity: 0.3; }
@@ -949,6 +949,23 @@ main { padding: 1.5rem; }
 .offer-section { border-color: #84cc16; }
 .offer-section .tracker-title { color: #84cc16; }
 .offer-fields { display: flex; flex-direction: column; gap: 0.6rem; }
+
+.prep-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border);
+}
+.prep-row:last-of-type { border-bottom: none; }
+.prep-icon { font-size: 13px; }
+.prep-link { font-size: 13px; font-weight: 600; color: var(--accent); text-decoration: none; }
+.prep-link:hover { text-decoration: underline; }
+.prep-file { font-size: 11px; color: var(--muted); margin-left: auto; font-family: ui-monospace, monospace; }
+.add-prep-form { display: flex; gap: 0.4rem; margin-top: 0.8rem; }
+.add-prep-form .input-sm { flex: 1; }
+.prep-hint { font-size: 12px; color: var(--muted); margin-top: 0.8rem; }
+.prep-hint code { background: var(--surface2); padding: 1px 5px; border-radius: 4px; }
 .btn-icon {
   background: none;
   border: none;

@@ -40,6 +40,9 @@
       {% if job.recruiter_name %}
       <span class="stat-pill">{{ job.recruiter_name }}</span>
       {% endif %}
+      {% if job.prep_count %}
+      <span class="stat-pill">🎤 {{ job.prep_count }} prep doc{{ 's' if job.prep_count != 1 }}</span>
+      {% endif %}
     </div>
     <div class="interview-card-footer">
       <a href="{{ url_for('job_detail', job_id=job.id) }}" class="btn btn-primary">Open Tracker</a>

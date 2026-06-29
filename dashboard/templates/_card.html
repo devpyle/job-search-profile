@@ -19,6 +19,9 @@
         {% if job.note_count %}
         <span class="note-badge" title="{{ job.note_count }} note(s)">📝 {{ job.note_count }}</span>
         {% endif %}
+        {% if job.prep_count %}
+        <span class="prep-badge" title="{{ job.prep_count }} interview prep doc(s)">🎤 {{ job.prep_count }}</span>
+        {% endif %}
         {% if job.has_final_docs %}
         <span class="doc-badge" title="Docs ready">📄</span>
         {% endif %}

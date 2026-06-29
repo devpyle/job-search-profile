@@ -123,6 +123,37 @@
         </div>
       </div>
 
+      <!-- Interview Prep Docs -->
+      <div class="tracker-section">
+        <div class="tracker-title">Interview Prep</div>
+        <div id="prep-list">
+          {% for p in prep_docs %}
+          <div class="prep-row" id="prep-{{ p.id }}">
+            <span class="prep-icon">🎤</span>
+            <a href="{{ url_for('view_prep', job_id=job.id, prep_id=p.id) }}" target="_blank" class="prep-link">{{ p.title or p.filename }}</a>
+            <span class="prep-file">{{ p.filename }}</span>
+            <button class="btn-icon" onclick="detachPrep('{{ job.id }}', {{ p.id }})" title="Unlink (file stays on disk)">✕</button>
+          </div>
+          {% else %}
+          <div class="empty-state" id="no-prep">No prep docs linked yet.</div>
+          {% endfor %}
+        </div>
+        {% if prep_files %}
+        <div class="prep-hint">Link another prep file from <code>output/interview-prep/</code>:</div>
+        <div class="add-prep-form">
+          <select id="prep-file" class="input-sm">
+            <option value="" selected>Choose a file…</option>
+            {% for f in prep_files %}
+            <option value="{{ f }}">{{ f }}</option>
+            {% endfor %}
+          </select>
+          <button class="btn-sm btn-primary" onclick="attachPrep('{{ job.id }}')">Link</button>
+        </div>
+        {% else %}
+        <div class="prep-hint">Drop a markdown file in <code>output/interview-prep/</code> to link it here.</div>
+        {% endif %}
+      </div>
+
       {% if job.status == 'Offer' %}
       <!-- Offer Details -->
       <div class="tracker-section offer-section">
@@ -315,10 +346,20 @@ function generateDocs(jobId) {
   const status = document.getElementById("gen-status");
   const instr  = document.getElementById("gen-instructions").value.trim();
   btn.disabled    = true;
-  btn.textContent = "Fetching posting, checking fit, writing… (~30–60s)";
+  btn.textContent = "Fetching posting, checking fit, writing… (~30–90s)";
   status.textContent = "";
   status.classList.remove("hidden");
 
+  // Capture the current latest doc id first, so that if a slow generation gets
+  // cut off by the Cloudflare tunnel timeout (but still finishes server-side),
+  // we can detect the new document and open it instead of showing a parse error.
+  fetch(`/jobs/${jobId}/documents/latest`)
+    .then(r => r.json())
+    .then(b => startGenerate(jobId, b.doc_id, instr, btn, status))
+    .catch(() => startGenerate(jobId, null, instr, btn, status));
+}
+
+function startGenerate(jobId, baselineDocId, instr, btn, status) {
   fetch(`/jobs/${jobId}/generate`, {
     method:  "POST",
     headers: {"Content-Type": "application/json"},
@@ -326,23 +367,45 @@ function generateDocs(jobId) {
   })
   .then(r => r.json())
   .then(d => {
-    btn.disabled    = false;
-    btn.textContent = "✨ Generate Resume + Cover Letter";
     if (d.ok) {
-      status.textContent = "✓ Generated! Redirecting to editor…";
-      setTimeout(() => {
-        location.href = `/jobs/${jobId}/documents/${d.doc_id}`;
-      }, 1000);
+      btn.textContent = "✨ Generate Resume + Cover Letter";
+      status.textContent = "✓ Generated! Opening editor…";
+      setTimeout(() => { location.href = `/jobs/${jobId}/documents/${d.doc_id}`; }, 800);
     } else {
+      btn.disabled    = false;
+      btn.textContent = "✨ Generate Resume + Cover Letter";
       status.textContent = "Error: " + d.error;
       showToast("Generation failed", true);
     }
   })
-  .catch(e => {
+  .catch(() => {
+    // Most likely the gateway/tunnel cut the connection on a long request.
+    // The server usually still finishes — poll for the new document.
+    status.textContent = "Still working past the gateway timeout… your document will open automatically.";
+    pollForDoc(jobId, baselineDocId, 0, btn, status);
+  });
+}
+
+function pollForDoc(jobId, baselineDocId, tries, btn, status) {
+  if (tries > 48) {  // ~4 minutes at 5s intervals
     btn.disabled    = false;
     btn.textContent = "✨ Generate Resume + Cover Letter";
-    status.textContent = "Error: " + e.message;
-  });
+    status.textContent = "Generation is taking unusually long. Reload the page in a minute to check for the document.";
+    return;
+  }
+  setTimeout(() => {
+    fetch(`/jobs/${jobId}/documents/latest`)
+      .then(r => r.json())
+      .then(d => {
+        if (d.doc_id && d.doc_id !== baselineDocId) {
+          status.textContent = "✓ Document ready! Opening…";
+          location.href = `/jobs/${jobId}/documents/${d.doc_id}`;
+        } else {
+          pollForDoc(jobId, baselineDocId, tries + 1, btn, status);
+        }
+      })
+      .catch(() => pollForDoc(jobId, baselineDocId, tries + 1, btn, status));
+  }, 5000);
 }
 
 function saveApplyUrl(jobId) {
@@ -462,6 +525,31 @@ function deleteRound(jobId, roundId) {
   .then(r => r.json())
   .then(d => {
     if (d.ok) document.getElementById(`round-${roundId}`)?.remove();
+    else showToast("Error: " + d.error, true);
+  });
+}
+
+function attachPrep(jobId) {
+  const sel = document.getElementById("prep-file");
+  const filename = sel ? sel.value : "";
+  if (!filename) { showToast("No prep file selected", true); return; }
+  fetch(`/jobs/${jobId}/prep`, {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ filename }),
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (d.ok) { showToast("Prep doc linked"); setTimeout(() => location.reload(), 600); }
+    else showToast("Error: " + d.error, true);
+  });
+}
+
+function detachPrep(jobId, prepId) {
+  if (!confirm("Unlink this prep doc? The file stays on disk.")) return;
+  fetch(`/jobs/${jobId}/prep/${prepId}`, { method: "DELETE" })
+  .then(r => r.json())
+  .then(d => {
+    if (d.ok) document.getElementById(`prep-${prepId}`)?.remove();
     else showToast("Error: " + d.error, true);
   });
 }

@@ -86,6 +86,14 @@ SCHEMA_SQL = """
         created_at   TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS interview_prep (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        job_id     TEXT NOT NULL,
+        filename   TEXT NOT NULL,
+        title      TEXT,
+        created_at TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS offer_details (
         job_id    TEXT PRIMARY KEY,
         base      TEXT,
@@ -190,11 +198,13 @@ def get_board_jobs(db):
     return db.execute("""
         SELECT j.*,
                COUNT(DISTINCT n.id)          AS note_count,
+               COUNT(DISTINCT p.id)          AS prep_count,
                MAX(d.is_final)               AS has_final_docs,
                MAX(d.id)                     AS latest_doc_id
         FROM   jobs j
-        LEFT JOIN notes     n ON n.job_id = j.id
-        LEFT JOIN documents d ON d.job_id = j.id
+        LEFT JOIN notes          n ON n.job_id = j.id
+        LEFT JOIN documents      d ON d.job_id = j.id
+        LEFT JOIN interview_prep p ON p.job_id = j.id
         GROUP BY j.id
         ORDER BY j.saved_at DESC
     """).fetchall()
@@ -204,9 +214,11 @@ def get_interview_jobs(db):
     return db.execute("""
         SELECT j.*,
                COUNT(DISTINCT ir.id) AS round_count,
+               COUNT(DISTINCT ip.id) AS prep_count,
                MAX(ir.date)          AS latest_round_date
         FROM   jobs j
         LEFT JOIN interview_rounds ir ON ir.job_id = j.id
+        LEFT JOIN interview_prep   ip ON ip.job_id = j.id
         WHERE  j.status IN ('Interviewing','Offer')
         GROUP BY j.id
         ORDER BY j.saved_at DESC
@@ -486,6 +498,41 @@ def update_round(db, round_id, job_id, data):
 
 def delete_round(db, round_id, job_id):
     db.execute("DELETE FROM interview_rounds WHERE id=? AND job_id=?", (round_id, job_id))
+    db.commit()
+
+
+# ── Interview Prep Docs ───────────────────────────────────────────────────────
+
+def get_prep_docs(db, job_id):
+    return [dict(r) for r in db.execute(
+        "SELECT * FROM interview_prep WHERE job_id=? ORDER BY created_at", (job_id,)
+    ).fetchall()]
+
+
+def count_prep_docs(db, job_id):
+    return db.execute(
+        "SELECT COUNT(*) FROM interview_prep WHERE job_id=?", (job_id,)
+    ).fetchone()[0]
+
+
+def get_prep_doc(db, prep_id, job_id):
+    row = db.execute(
+        "SELECT * FROM interview_prep WHERE id=? AND job_id=?", (prep_id, job_id)
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def add_prep_doc(db, job_id, filename, title):
+    db.execute(
+        "INSERT INTO interview_prep (job_id, filename, title, created_at) VALUES (?,?,?,?)",
+        (job_id, filename, title, datetime.now().isoformat()),
+    )
+    db.commit()
+    return db.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+
+def delete_prep_doc(db, prep_id, job_id):
+    db.execute("DELETE FROM interview_prep WHERE id=? AND job_id=?", (prep_id, job_id))
     db.commit()
 
 

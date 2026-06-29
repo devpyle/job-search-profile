@@ -49,6 +49,7 @@ OUTPUT_DIR  = REPO_ROOT / "output" / "job-radar"
 DASH_DIR    = REPO_ROOT / "dashboard"
 DB_PATH     = DASH_DIR / "data" / "jobs.db"
 EXPORT_DIR  = REPO_ROOT / "output" / "documents"
+INTERVIEW_PREP_DIR = REPO_ROOT / "output" / "interview-prep"
 
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 
@@ -1496,9 +1497,13 @@ def job_detail(job_id):
     fit       = data.get_fit_analysis(db, job_id)
 
     contacts = offer = rounds = None
+    prep_docs = prep_files = None
     if dict(job)["status"] in ("Interviewing", "Offer"):
         contacts = data.get_contacts(db, job_id)
         rounds   = data.get_rounds(db, job_id)
+        prep_docs = data.get_prep_docs(db, job_id)
+        linked    = {p["filename"] for p in prep_docs}
+        prep_files = [f for f in _list_prep_files() if f not in linked]
     if dict(job)["status"] == "Offer":
         offer = data.get_offer(db, job_id)
 
@@ -1511,6 +1516,8 @@ def job_detail(job_id):
         fit=fit,
         contacts=contacts,
         rounds=rounds,
+        prep_docs=prep_docs,
+        prep_files=prep_files,
         offer=offer,
         statuses=STATUSES,
         status_colors=STATUS_COLORS,
@@ -1571,6 +1578,82 @@ def delete_round(job_id, round_id):
     return jsonify({"ok": True})
 
 
+# ── Interview Prep Docs ───────────────────────────────────────────────────────
+
+def _list_prep_files():
+    """Markdown prep files available to link, newest first."""
+    if not INTERVIEW_PREP_DIR.exists():
+        return []
+    files = sorted(INTERVIEW_PREP_DIR.glob("*.md"),
+                   key=lambda p: p.stat().st_mtime, reverse=True)
+    return [p.name for p in files]
+
+
+def _prep_title_from_filename(fname):
+    return fname.rsplit(".", 1)[0].replace("-", " ").replace("_", " ").strip()
+
+
+def _render_prep_html(md_text, title):
+    import markdown as _md
+    body = _md.markdown(md_text, extensions=["tables", "fenced_code", "sane_lists"])
+    safe_title = (title or "Interview Prep").replace("<", "&lt;").replace(">", "&gt;")
+    return f"""<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>{safe_title}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Hanken+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<style>
+  body{{max-width:760px;margin:0 auto;padding:1.5rem 1.5rem 4rem;font-family:'Hanken Grotesk',-apple-system,sans-serif;line-height:1.55;color:#1a1714;background:#f7f4ee;}}
+  h1,h2,h3{{font-family:'Fraunces',Georgia,serif;line-height:1.2;letter-spacing:-0.01em;}}
+  h1{{font-size:1.8rem;margin:0 0 1rem;}}
+  h2{{font-size:1.25rem;margin:1.9rem 0 .6rem;border-bottom:1px solid #ddd5c8;padding-bottom:.3rem;color:#0b5d52;}}
+  h3{{font-size:1.05rem;margin:1.2rem 0 .4rem;}}
+  a{{color:#0b5d52;}} code{{background:#efe9df;padding:.1em .35em;border-radius:4px;font-size:.9em;}}
+  ul,ol{{padding-left:1.3rem;}} li{{margin:.25rem 0;}}
+  blockquote{{border-left:3px solid #0b5d52;margin:.8rem 0;padding:.2rem 0 .2rem 1rem;color:#45403a;}}
+  .bar{{display:flex;justify-content:space-between;align-items:center;margin-bottom:1.4rem;font-size:.85rem;}}
+  .bar button{{font:inherit;font-weight:600;border:1px solid #0b5d52;background:#0b5d52;color:#fff;border-radius:100px;padding:.5rem 1.1rem;cursor:pointer;}}
+  .bar a{{text-decoration:none;color:#45403a;}}
+  @media print{{.bar{{display:none;}}body{{background:#fff;}}}}
+</style></head>
+<body>
+<div class="bar"><a href="javascript:history.back()">&larr; Back</a><button onclick="window.print()">Save as PDF</button></div>
+{body}
+</body></html>"""
+
+
+@app.route("/jobs/<job_id>/prep", methods=["POST"])
+def add_prep(job_id):
+    payload  = request.json or {}
+    filename = (payload.get("filename") or "").strip()
+    if filename not in _list_prep_files():
+        return jsonify({"ok": False, "error": "unknown prep file"}), 400
+    title = (payload.get("title") or _prep_title_from_filename(filename)).strip()
+    db = get_db()
+    new_id = data.add_prep_doc(db, job_id, filename, title)
+    return jsonify({"ok": True, "id": new_id, "title": title, "filename": filename})
+
+
+@app.route("/jobs/<job_id>/prep/<int:prep_id>", methods=["DELETE"])
+def delete_prep(job_id, prep_id):
+    db = get_db()
+    data.delete_prep_doc(db, prep_id, job_id)
+    return jsonify({"ok": True})
+
+
+@app.route("/jobs/<job_id>/prep/<int:prep_id>/view")
+def view_prep(job_id, prep_id):
+    db  = get_db()
+    doc = data.get_prep_doc(db, prep_id, job_id)
+    if not doc:
+        return "Not found", 404
+    fname = doc["filename"]
+    if fname not in _list_prep_files():
+        return "Prep file is no longer on disk", 404
+    text = (INTERVIEW_PREP_DIR / fname).read_text(encoding="utf-8", errors="replace")
+    return _render_prep_html(text, doc.get("title") or fname)
+
+
 @app.route("/jobs/<job_id>/offer", methods=["POST"])
 def save_offer(job_id):
     payload = request.json or {}
@@ -1621,6 +1704,20 @@ def generate(job_id):
         })
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/jobs/<job_id>/documents/latest")
+def latest_document(job_id):
+    """Latest document id for a job. Lets the UI recover when a slow generation
+    is cut off by a gateway/tunnel timeout but still completes server-side."""
+    db  = get_db()
+    row = db.execute(
+        "SELECT id, version FROM documents WHERE job_id=? ORDER BY version DESC LIMIT 1",
+        (job_id,),
+    ).fetchone()
+    if row:
+        return jsonify({"ok": True, "doc_id": row["id"], "version": row["version"]})
+    return jsonify({"ok": True, "doc_id": None, "version": 0})
 
 
 @app.route("/jobs/<job_id>/fit-analysis", methods=["POST"])

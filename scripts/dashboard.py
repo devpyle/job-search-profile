@@ -488,6 +488,15 @@ Name only tools, platforms, methodologies, and certifications that appear in the
 
 TAILORING DISCIPLINE:
 Lead with the candidate's true professional identity and real achievements as the backbone. Tailor by selecting which real experiences to foreground and lightly rephrasing toward the JD's vocabulary. Do not invent a new persona per role. Do not bury his core identity to chase JD keywords. Do not contort the whole narrative to mirror the posting. An over-tailored resume that reads as a different person for every job is a failure.
+
+FRAMING HONESTY (summaries and cover letters held to the SAME standard as bullets):
+- Verb strength must match the work history: "owned"/"ran"/"led"/"built"/"implemented" are different claims — use the source doc's verb or weaker, never stronger.
+- Do the arithmetic on duration claims: "N years of X" must be computable from the role dates that actually involved X. Do not stretch a partial-career domain across the whole career.
+- No domain relabeling: never re-badge documented work into the JD's domain when the substance differs (tax reporting does not become "payments-data" for a payments JD).
+- No self-granted titles in summaries: role labels must match documented titles or dual roles; otherwise describe the work.
+- Present tense only for the current role; use past/career framing for evidence from prior roles.
+- Do not assert unverified real-world facts (commute distances, geography, relocation willingness) — phrase them as open to discussion.
+- Final check: re-read the summary and cover letter sentence by sentence and ask whether the candidate would survive an interviewer probing that exact sentence. Fix or cut anything that fails.
 {regen_block}{fit_block}
 
 CANDIDATE PERSONAL INFO:
@@ -769,8 +778,13 @@ body {
   margin: 0 0 1rem; padding-bottom: 0.45rem; border-bottom: 1px solid var(--line);
 }
 .r-summary { color: var(--ink-soft); margin: 0; font-size: 1rem; }
-.r-job { margin-bottom: 1.4rem; page-break-inside: avoid; }
+.r-job { margin-bottom: 1.4rem; }
 .r-job:last-child { margin-bottom: 0; }
+/* Let job blocks flow across page breaks so pages fill top-to-bottom (no huge
+   gaps), but never strand a section or job header alone at the bottom. */
+.r-section > h2 { break-after: avoid; page-break-after: avoid; }
+.r-job-head, .r-job-co { break-after: avoid; page-break-after: avoid; break-inside: avoid; page-break-inside: avoid; }
+.r-job li, .r-generic-list li { break-inside: avoid; page-break-inside: avoid; }
 .r-job-head { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; flex-wrap: wrap; }
 .r-job-title { font-family: var(--display); font-weight: 600; font-size: 1.12rem; margin: 0; letter-spacing: -0.01em; }
 .r-job-dates { font-family: var(--mono); font-size: 0.76rem; color: var(--ink-faint); white-space: nowrap; }
@@ -784,15 +798,20 @@ body {
 .r-skill-list { color: var(--ink-soft); font-size: 0.92rem; margin: 0; }
 .r-cl-body p { color: var(--ink-soft); margin: 0 0 0.8rem; }
 @media print {
-  @page { margin: 13mm; }
-  body { background: #fff; font-size: 10pt; line-height: 1.35; }
+  @page { margin: 11mm; }
+  body { background: #fff; font-size: 9.6pt; line-height: 1.3; }
   .toolbar { display: none; }
   .sheet { margin: 0; max-width: none; border: none; border-radius: 0; box-shadow: none; padding: 0; background: #fff; }
-  .r-name { font-size: 20pt; }
-  .r-contact { border-bottom-color: #000; }
-  .r-section { margin-top: 11pt; }
-  .r-job { margin-bottom: 8pt; }
-  .r-job ul, .r-generic-list { gap: 0.3rem; }
+  .r-name { font-size: 17pt; }
+  .r-contact { border-bottom-color: #000; padding-bottom: 7pt; margin-top: 4pt; }
+  .r-section { margin-top: 8pt; }
+  .r-section > h2 { margin-bottom: 6pt; padding-bottom: 3pt; }
+  .r-summary { font-size: 9.6pt; }
+  .r-job { margin-bottom: 5pt; }
+  .r-job-co { margin: 0.05rem 0 0.35rem; }
+  .r-job ul, .r-generic-list { gap: 0.22rem; }
+  .r-job li, .r-generic-list li { font-size: 9.5pt; }
+  .r-skills { gap: 0.35rem; }
   a { color: #000 !important; text-decoration: none; }
   .r-skill-row { grid-template-columns: 150px 1fr; }
 }

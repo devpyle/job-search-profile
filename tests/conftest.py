@@ -31,6 +31,7 @@ def _install_mock_config():
     mod.REQUIRE_US_LOCATION = True
     mod.ADZUNA_COUNTRY = "us"
     mod.JOB_DOCS = []
+    mod.GENERATION_GUARDRAILS = ""
     mod.ADZUNA_QUERIES = []
     mod.BRAVE_QUERIES = []
     mod.TAVILY_QUERIES = []

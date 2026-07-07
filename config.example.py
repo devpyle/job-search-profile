@@ -60,6 +60,18 @@ JOB_DOCS = [
     "YYYY-YYYY-company-title.md",
 ]
 
+# Candidate-specific accuracy guardrails injected verbatim into the document
+# generation prompt, on top of the generic grounding/framing rules. Use this for
+# personal specifics you want strictly enforced — a named accomplishment that
+# must not be over-claimed, a scope you must not exaggerate, etc. Leave "" to
+# skip. Example:
+#   GENERATION_GUARDRAILS = """\
+#   AI — DAY JOB SCOPE:
+#   My only hands-on AI accomplishment at work is <specific fact>. Use that fact
+#   and nothing beyond it. Do not imply org-wide adoption or frame me as an AI
+#   leader at my employers."""
+GENERATION_GUARDRAILS = ""
+
 
 # ── SEARCH QUERIES ────────────────────────────────────────────────────────────
 # Edit these to match your target job titles, industries, and specialties.

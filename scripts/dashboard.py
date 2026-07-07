@@ -61,7 +61,8 @@ _CLI_ENV = {k: v for k, v in os.environ.items() if k != "ANTHROPIC_API_KEY"}
 
 # ── PERSONAL CONFIG (from config.py) ──────────────────────────────────────────
 sys.path.insert(0, str(REPO_ROOT))
-from config import CANDIDATE_NAME, JOB_DOCS, HOME_METRO_TERMS, HOME_CITY  # noqa: E402
+from config import (CANDIDATE_NAME, JOB_DOCS, HOME_METRO_TERMS, HOME_CITY,  # noqa: E402
+                    GENERATION_GUARDRAILS)
 
 try:  # bare import at runtime and under pytest's prepend path; package fallback
     from rag import retrieve_relevant as rag_retrieve  # noqa: E402
@@ -454,6 +455,11 @@ def generate_documents(job: dict, instructions: str = "", fit: Optional[dict] = 
     except Exception:
         relevant_block = ""
 
+    # Candidate-specific accuracy guardrails live in config.py (gitignored) so
+    # the public dashboard.py stays generic. Empty by default.
+    candidate_guardrails = (GENERATION_GUARDRAILS.strip() + "\n\n"
+                            if GENERATION_GUARDRAILS.strip() else "")
+
     regen_block = f"\n\nSPECIAL INSTRUCTIONS:\n{instructions}" if instructions else ""
 
     fit_block = ""
@@ -503,10 +509,7 @@ Every bullet and every clause must trace to a specific achievement or metric in 
 
 ACCURACY GUARDRAILS — ENFORCE BEFORE WRITING:
 
-AI — DAY JOB SCOPE:
-The candidate's only documented hands-on AI accomplishment in his day jobs is rolling out GitHub Copilot to one development team, reducing certain stories from 5 story points to 1. Use that fact, scoped to one team, and nothing beyond it. Do not write summary lines implying org-wide or firm-wide AI adoption. Do not frame him as an AI evangelist or AI leader at his employers. Do not say he "builds with AI" at work in any general sense. The scope was one team, one tool.
-
-AI — SIDE PROJECTS ONLY:
+{candidate_guardrails}AI — SIDE PROJECTS ONLY:
 Broader AI work (building LLM products, prompt engineering, shipping AI agents) belongs exclusively in the Selected Projects section. Keep it there. Never blend day-job and side-project AI experience into a unified claim or summary line.
 
 TOOL AND SKILL ACCURACY:
@@ -750,7 +753,7 @@ def markdown_to_docx(md_text: str) -> Document:
 
     return doc
 
-# ── STYLED HTML EXPORT (matches davidmyers.work/resume design) ────────────────
+# ── STYLED HTML EXPORT (matches the personal website resume design) ────────────────
 
 RESUME_CSS = """
 :root {
@@ -1841,7 +1844,7 @@ def download_doc(job_id, doc_id, doc_type):
 
 @app.route("/jobs/<job_id>/documents/<int:doc_id>/styled/<doc_type>")
 def view_styled(job_id, doc_id, doc_type):
-    """Serve a styled HTML resume/cover letter (matches davidmyers.work design).
+    """Serve a styled HTML resume/cover letter (matches the personal website design).
     Opens inline so the user can print to PDF."""
     db  = get_db()
     job = data.get_job(db, job_id)

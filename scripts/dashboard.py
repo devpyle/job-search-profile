@@ -62,6 +62,11 @@ _CLI_ENV = {k: v for k, v in os.environ.items() if k != "ANTHROPIC_API_KEY"}
 # ── PERSONAL CONFIG (from config.py) ──────────────────────────────────────────
 sys.path.insert(0, str(REPO_ROOT))
 from config import CANDIDATE_NAME, JOB_DOCS, HOME_METRO_TERMS, HOME_CITY  # noqa: E402
+
+try:  # bare import at runtime and under pytest's prepend path; package fallback
+    from rag import retrieve_relevant as rag_retrieve  # noqa: E402
+except ImportError:  # pragma: no cover
+    from scripts.rag import retrieve_relevant as rag_retrieve  # noqa: E402
 from portal_scanner import scan_all as portal_scan_all  # noqa: E402
 import db as data  # noqa: E402
 
@@ -428,6 +433,27 @@ def generate_documents(job: dict, instructions: str = "", fit: Optional[dict] = 
     history_parts = [_read_doc(f) for f in JOB_DOCS]
     history = "\n\n---\n\n".join(p for p in history_parts if p)
 
+    # RAG: instead of making the model sift the whole corpus, retrieve the
+    # highest-signal documented achievements for THIS posting by semantic search
+    # and inject them as prioritized context. Best-effort — never blocks a
+    # generation if the index or embedder is unavailable.
+    relevant_block = ""
+    try:
+        corpus_files = list(JOB_DOCS) + ["side-projects.md"]
+        query = (f"{job.get('title', '')} at {job.get('company', '')}\n\n"
+                 f"{job.get('description', '')}")
+        hits = rag_retrieve(DOCS_DIR, corpus_files, query, k=18)
+        if hits:
+            lines = "\n".join(f"- [{c.label}] {c.text}" for c, _ in hits)
+            relevant_block = (
+                "\n\nMOST RELEVANT DOCUMENTED EXPERIENCE (retrieved by semantic "
+                "search over the full career corpus for THIS specific posting — "
+                "these are the highest-signal facts to build from; still obey "
+                "strict chronological order and every grounding rule above):\n"
+                f"{lines}")
+    except Exception:
+        relevant_block = ""
+
     regen_block = f"\n\nSPECIAL INSTRUCTIONS:\n{instructions}" if instructions else ""
 
     fit_block = ""
@@ -510,6 +536,7 @@ TECHNICAL SKILLS:
 
 SELECTED PROJECTS (self-built side projects — use for a tailored ## Selected Projects section when the role values AI, ML, technical depth, or a builder profile):
 {projects}
+{relevant_block}
 
 WORK HISTORY (newest to oldest — use in this order, do not reorder):
 {history}

@@ -9,6 +9,11 @@ markdown>=3.5
 python-docx>=1.1
 pypdf>=4.0
 
+# RAG over the career corpus (scripts/rag.py)
+numpy>=1.26          # required — chunk index + cosine retrieval
+# fastembed>=0.3     # recommended — dense semantic embeddings (BAAI/bge-small-en-v1.5).
+                     # Without it, rag.py falls back to a deterministic hashing embedder.
+
 # AI providers (all optional except anthropic)
 anthropic>=0.40
 

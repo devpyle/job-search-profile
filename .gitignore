@@ -23,6 +23,8 @@ config.py
 # Personal profile docs — keep local only, templates are in docs/templates/
 docs/*.md
 .gstack/
+# RAG index cache — derived from personal docs, rebuilt on demand
+.rag_cache/
 # Personal LinkedIn rewrite + generated images — keep local only
 output/linkedin/
 # Personal interview prep — keep local only

@@ -59,6 +59,11 @@ ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 # "connectors are disabled" error that breaks `claude -p`.
 _CLI_ENV = {k: v for k, v in os.environ.items() if k != "ANTHROPIC_API_KEY"}
 
+# Seconds to wait on a `claude -p` generation before giving up. Richer job
+# descriptions push generation past the old 120s ceiling, silently failing a
+# doc; 300s gives comfortable headroom.
+_CLI_TIMEOUT = 300
+
 # ── PERSONAL CONFIG (from config.py) ──────────────────────────────────────────
 sys.path.insert(0, str(REPO_ROOT))
 from config import (CANDIDATE_NAME, JOB_DOCS, HOME_METRO_TERMS, HOME_CITY,  # noqa: E402
@@ -555,7 +560,7 @@ Generate the resume and cover letter. Return ONLY the JSON object."""
 
     result = subprocess.run(
         ["claude", "-p", prompt],
-        capture_output=True, text=True, timeout=120, env=_CLI_ENV,
+        capture_output=True, text=True, timeout=_CLI_TIMEOUT, env=_CLI_ENV,
     )
     if result.returncode != 0:
         raise RuntimeError(f"claude CLI error: {result.stderr[:300]}")
@@ -620,7 +625,7 @@ No markdown fences, no preamble."""
 
     result = subprocess.run(
         ["claude", "-p", prompt],
-        capture_output=True, text=True, timeout=120, env=_CLI_ENV,
+        capture_output=True, text=True, timeout=_CLI_TIMEOUT, env=_CLI_ENV,
     )
     if result.returncode != 0:
         raise RuntimeError(f"claude CLI error: {result.stderr[:300]}")

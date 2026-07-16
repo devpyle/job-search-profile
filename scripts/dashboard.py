@@ -17,6 +17,7 @@ import re
 import sqlite3
 import subprocess
 import sys
+import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -79,17 +80,26 @@ import db as data  # noqa: E402
 # ── KANBAN COLUMNS ────────────────────────────────────────────────────────────
 
 STATUSES = [
-    "New", "Reviewing", "Drafting", "Ready",
+    "Reviewing", "Drafting", "Ready",
     "Applied", "Interviewing", "Offer",
     "Accepted", "Rejected", "Passed",
 ]
-APP_STATUSES       = ["New", "Reviewing", "Drafting", "Ready", "Applied"]
+APP_STATUSES       = ["Reviewing", "Drafting", "Ready", "Applied"]
 INTERVIEW_STATUSES = ["Interviewing", "Offer"]
 END_STATUSES       = ["Accepted", "Rejected", "Passed"]
 ACTIVE_STATUSES    = APP_STATUSES  # kept for any legacy references
 
+# Fit analyses score 1-10. Below this cutoff a card is treated as a weak fit:
+# it stays in Drafting with a red bar and its gaps shown, instead of getting
+# documents generated and advancing to Ready. See move_job / _run_generation.
+FIT_CUTOFF = 5
+
+# Job IDs whose background generation pipeline is currently running. In-memory
+# only (single-user app); a server restart just drops the "generating" badge and
+# the card falls back to showing its real DB status.
+_GENERATING: set = set()
+
 STATUS_COLORS = {
-    "New":          "#94a3b8",
     "Reviewing":    "#3b82f6",
     "Drafting":     "#8b5cf6",
     "Ready":        "#10b981",
@@ -128,6 +138,9 @@ def get_db():
     if "db" not in g:
         g.db = sqlite3.connect(str(DB_PATH))
         g.db.row_factory = sqlite3.Row
+        # Wait briefly for a competing writer (e.g. the background generation
+        # thread) instead of failing instantly with "database is locked".
+        g.db.execute("PRAGMA busy_timeout=5000")
     return g.db
 
 @app.teardown_appcontext
@@ -1213,9 +1226,25 @@ def board():
 
     jobs_by_status = {s: [] for s in STATUSES}
     for row in rows:
-        status = row["status"] if row["status"] in STATUSES else "New"
+        status = row["status"] if row["status"] in STATUSES else "Reviewing"
         job = dict(row)
         job["is_stale"] = row["id"] in stale_ids
+        job["generating"] = row["id"] in _GENERATING
+        # A Drafting card whose fit analysis scored below the cutoff is a weak
+        # fit that stayed put: flag it so the card shows a red bar + the reason.
+        fit_score = job.get("fit_score")
+        job["poor_fit"] = (
+            status == "Drafting"
+            and not job["generating"]
+            and fit_score is not None
+            and fit_score < FIT_CUTOFF
+        )
+        if job["poor_fit"]:
+            job["fit_reason"] = (
+                job.get("fit_summary")
+                or job.get("fit_gaps")
+                or f"Fit score {fit_score}/10 — below the {FIT_CUTOFF} threshold."
+            )
         jobs_by_status[status].append(job)
 
     return render_template(
@@ -1524,7 +1553,81 @@ def move_job(job_id):
         if job and job["company"]:
             data.increment_company_signal(db, job["company"], "reject")
     data.move_job(db, job_id, status)
+
+    # Moving a card into Drafting kicks off the fit-analysis + document pipeline
+    # in the background, as long as it has no documents yet (so re-dragging an
+    # already-drafted card never regenerates). The pipeline decides where it
+    # lands: weak fits stay in Drafting with a red bar; real fits get documents
+    # and advance to Ready. See _run_generation.
+    if (status == "Drafting"
+            and not app.config.get("TESTING")
+            and job_id not in _GENERATING):
+        existing_docs = data.get_documents(db, job_id)
+        if not existing_docs:
+            _GENERATING.add(job_id)
+            threading.Thread(
+                target=_run_generation, args=(job_id,), daemon=True
+            ).start()
+            return jsonify({"ok": True, "generating": True})
+
     return jsonify({"ok": True})
+
+
+def _run_generation(job_id: str):
+    """Background pipeline for a card just moved into Drafting.
+
+    Runs its own SQLite connection (Flask's request-scoped `g.db` is not usable
+    from a worker thread). Best-effort throughout: any failure leaves the card in
+    Drafting so it can be retried, and always clears the in-flight marker.
+    """
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA busy_timeout=5000")
+    try:
+        row = data.get_job(conn, job_id)
+        if not row:
+            return
+        job = ensure_job_description(conn, dict(row))
+
+        fit = generate_fit_analysis(job)
+        data.save_fit_analysis(conn, job_id, fit)
+        try:
+            score = float(fit.get("match_score") or 0)
+        except (TypeError, ValueError):
+            score = 0
+
+        if score < FIT_CUTOFF:
+            # Weak fit: leave it in Drafting. The board reads the low fit score
+            # and renders the red bar + gaps on its own.
+            return
+
+        # Real fit: generate documents and advance to Ready.
+        result = generate_documents(job, "", fit)
+        max_v  = data.get_max_doc_version(conn, job_id)
+        data.insert_document(conn, job_id, max_v + 1,
+                             result["resume"], result["cover_letter"], "")
+        if not data.get_apply_url(conn, job_id) and job.get("url"):
+            data.save_apply_url(conn, job_id, job["url"])
+        data.move_job(conn, job_id, "Ready")
+    except Exception as e:  # noqa: BLE001 - never crash the worker thread
+        print(f"[generate] background pipeline failed for {job_id}: {e}", file=sys.stderr)
+    finally:
+        _GENERATING.discard(job_id)
+        conn.close()
+
+
+@app.route("/jobs/<job_id>/gen-status")
+def gen_status(job_id):
+    """Poll target for the board while a Drafting card generates in the
+    background. Returns whether the pipeline is still running plus the card's
+    current status so the UI knows when to refresh."""
+    db = get_db()
+    job = data.get_job(db, job_id)
+    return jsonify({
+        "ok": True,
+        "generating": job_id in _GENERATING,
+        "status": (dict(job)["status"] if job else None),
+    })
 
 
 @app.route("/jobs/<job_id>/notes", methods=["POST"])
@@ -1749,7 +1852,7 @@ def generate(job_id):
         max_v  = data.get_max_doc_version(db, job_id)
         data.insert_document(db, job_id, max_v + 1,
                              result["resume"], result["cover_letter"], instructions)
-        db.execute("UPDATE jobs SET status='Drafting' WHERE id=? AND status IN ('New','Reviewing')", (job_id,))
+        db.execute("UPDATE jobs SET status='Drafting' WHERE id=? AND status='Reviewing'", (job_id,))
         db.commit()
         doc_id = db.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
         return jsonify({

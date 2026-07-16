@@ -425,3 +425,71 @@ def test_move_past_ready_not_blocked(client, db):
     resp = client.post("/jobs/gate4/move", json={"status": "Applied"})
     assert resp.status_code == 200
     assert resp.json["ok"]
+
+
+# ── Simplified application workflow (Reviewing → Drafting → Ready → Applied) ──
+
+
+def test_new_status_removed(dashboard_app):
+    import dashboard as dash
+    assert "New" not in dash.STATUSES
+    assert "New" not in dash.APP_STATUSES
+    assert dash.APP_STATUSES[0] == "Reviewing"
+
+
+def test_saved_job_defaults_to_reviewing(client, db):
+    client.post("/jobs/save", json={
+        "job_id": "revq1",
+        "url": "https://example.com/job/revq1",
+        "title": "PO Role",
+        "company": "Acme",
+    })
+    row = db.execute("SELECT status FROM jobs WHERE id='revq1'").fetchone()
+    assert row["status"] == "Reviewing"
+
+
+def test_ready_gate_accepts_draft_document(client, db):
+    """Ready no longer requires a doc marked final — any generated doc + an
+    apply URL is enough, so the auto-pipeline can advance drafts to Ready."""
+    import db as ddata
+    _insert_job(db, job_id="rdy1", status="Drafting")
+    assert ddata.check_ready_requirements(db, "rdy1")["ok"] is False
+    ddata.insert_document(db, "rdy1", 1, "# resume", "cover", "")
+    ddata.save_apply_url(db, "rdy1", "https://example.com/apply/rdy1")
+    assert ddata.check_ready_requirements(db, "rdy1")["ok"] is True
+
+
+def test_move_to_ready_with_draft_succeeds(client, db):
+    import db as ddata
+    _insert_job(db, job_id="rdy2", status="Drafting")
+    ddata.insert_document(db, "rdy2", 1, "# resume", "cover", "")
+    ddata.save_apply_url(db, "rdy2", "https://example.com/apply/rdy2")
+    resp = client.post("/jobs/rdy2/move", json={"status": "Ready"})
+    assert resp.status_code == 200
+    assert json.loads(resp.data)["ok"] is True
+    row = db.execute("SELECT status FROM jobs WHERE id='rdy2'").fetchone()
+    assert row["status"] == "Ready"
+
+
+def test_move_to_drafting_with_existing_docs_does_not_generate(client, db):
+    """Re-dragging a card that already has documents into Drafting must not
+    kick off (or claim to kick off) generation."""
+    import dashboard as dash
+    import db as ddata
+    _insert_job(db, job_id="draft1", status="Reviewing")
+    ddata.insert_document(db, "draft1", 1, "# resume", "cover", "")
+    db.commit()
+    resp = client.post("/jobs/draft1/move", json={"status": "Drafting"})
+    payload = json.loads(resp.data)
+    assert payload["ok"] is True
+    assert not payload.get("generating")
+    assert "draft1" not in dash._GENERATING
+
+
+def test_gen_status_endpoint(client, db):
+    _insert_job(db, job_id="gs1", status="Drafting")
+    resp = client.get("/jobs/gs1/gen-status")
+    payload = json.loads(resp.data)
+    assert payload["ok"] is True
+    assert payload["generating"] is False
+    assert payload["status"] == "Drafting"

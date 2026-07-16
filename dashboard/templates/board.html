@@ -85,6 +85,9 @@ document.querySelectorAll(".sortable-list").forEach(el => {
             alert("Move failed: " + d.error);
           }
           location.reload();
+        } else if (d.generating) {
+          markGenerating(jobId);
+          pollGeneration(jobId);
         } else {
           updateBadges();
         }
@@ -92,6 +95,42 @@ document.querySelectorAll(".sortable-list").forEach(el => {
     }
   });
 });
+
+function markGenerating(jobId) {
+  const card = document.querySelector(`[data-job-id="${jobId}"]`);
+  if (!card) return;
+  card.classList.add("generating");
+  const bar = card.querySelector(".status-bar");
+  if (bar) bar.style.background = "#3b82f6";
+  if (!card.querySelector(".card-generating")) {
+    const el = document.createElement("div");
+    el.className = "card-generating";
+    el.textContent = "⏳ Analyzing fit and drafting documents…";
+    const body = card.querySelector(".card-body");
+    const meta = card.querySelector(".card-meta");
+    if (body && meta) body.insertBefore(el, meta.nextSibling);
+  }
+  updateBadges();
+}
+
+// Poll the background pipeline. When it finishes, the card has either advanced
+// to Ready (real fit) or stayed in Drafting as a weak fit — reload to render
+// whichever it is, including the red bar.
+function pollGeneration(jobId) {
+  const tick = () => {
+    fetch(`/jobs/${jobId}/gen-status`)
+      .then(r => r.json())
+      .then(d => {
+        if (d.generating) {
+          setTimeout(tick, 4000);
+        } else {
+          location.reload();
+        }
+      })
+      .catch(() => setTimeout(tick, 6000));
+  };
+  setTimeout(tick, 4000);
+}
 
 function updateBadges() {
   document.querySelectorAll(".kanban-col").forEach(col => {

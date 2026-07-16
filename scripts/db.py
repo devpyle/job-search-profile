@@ -17,7 +17,7 @@ SCHEMA_SQL = """
         posted      TEXT,
         report_file TEXT,
         saved_at    TEXT NOT NULL,
-        status      TEXT NOT NULL DEFAULT 'New'
+        status      TEXT NOT NULL DEFAULT 'Reviewing'
     );
 
     CREATE TABLE IF NOT EXISTS notes (
@@ -199,12 +199,17 @@ def get_board_jobs(db):
         SELECT j.*,
                COUNT(DISTINCT n.id)          AS note_count,
                COUNT(DISTINCT p.id)          AS prep_count,
+               COUNT(DISTINCT d.id)          AS doc_count,
                MAX(d.is_final)               AS has_final_docs,
-               MAX(d.id)                     AS latest_doc_id
+               MAX(d.id)                     AS latest_doc_id,
+               fa.match_score                AS fit_score,
+               fa.summary                    AS fit_summary,
+               fa.gaps_md                    AS fit_gaps
         FROM   jobs j
         LEFT JOIN notes          n ON n.job_id = j.id
         LEFT JOIN documents      d ON d.job_id = j.id
         LEFT JOIN interview_prep p ON p.job_id = j.id
+        LEFT JOIN fit_analyses  fa ON fa.job_id = j.id
         GROUP BY j.id
         ORDER BY j.saved_at DESC
     """).fetchall()
@@ -235,7 +240,7 @@ def save_job(db, job_id, data):
         INSERT OR IGNORE INTO jobs
           (id, url, title, company, location, salary, source,
            tier, reason, description, posted, report_file, saved_at, status, status_changed_at)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'New',?)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,'Reviewing',?)
     """, (
         job_id, data.get("url"), data.get("title"), data.get("company"),
         data.get("location"), data.get("salary"), data.get("source"),
@@ -266,11 +271,11 @@ def get_all_job_ids(db):
 def check_ready_requirements(db, job_id):
     """Check if a job meets requirements to move to Ready status."""
     missing = []
-    has_final = db.execute(
-        "SELECT 1 FROM documents WHERE job_id=? AND is_final=1 LIMIT 1", (job_id,)
+    has_docs = db.execute(
+        "SELECT 1 FROM documents WHERE job_id=? LIMIT 1", (job_id,)
     ).fetchone()
-    if not has_final:
-        missing.append("Final document (mark a resume/cover letter as final)")
+    if not has_docs:
+        missing.append("A generated resume/cover letter")
     has_url = db.execute(
         "SELECT 1 FROM job_apply_urls WHERE job_id=?", (job_id,)
     ).fetchone()
@@ -280,7 +285,7 @@ def check_ready_requirements(db, job_id):
 
 
 STALE_THRESHOLDS = {
-    "New": 3, "Reviewing": 5, "Drafting": 7, "Ready": 3,
+    "Reviewing": 5, "Drafting": 7, "Ready": 3,
     "Applied": 14, "Interviewing": 7,
 }
 
@@ -418,7 +423,6 @@ def save_fit_analysis(db, job_id, result):
         result["stories"], result["summary"],
         datetime.now().isoformat(),
     ))
-    db.execute("UPDATE jobs SET status='Reviewing' WHERE id=? AND status='New'", (job_id,))
     db.commit()
 
 

@@ -1,5 +1,5 @@
-{% set color = status_colors[job.status] if job.status in status_colors else '#94a3b8' %}
-<div class="job-card{% if job.is_stale %} stale{% endif %}" data-job-id="{{ job.id }}" data-status="{{ job.status }}">
+{% set color = '#ef4444' if job.poor_fit else (status_colors[job.status] if job.status in status_colors else '#94a3b8') %}
+<div class="job-card{% if job.is_stale %} stale{% endif %}{% if job.poor_fit %} poor-fit{% endif %}{% if job.generating %} generating{% endif %}" data-job-id="{{ job.id }}" data-status="{{ job.status }}">
   <div class="status-bar" style="background: {{ color }}"></div>
   <div class="card-body">
     <div class="card-title">{{ job.title }}</div>
@@ -9,6 +9,11 @@
     </div>
     {% if job.salary and job.salary != 'Not listed' %}
     <div class="card-salary">{{ job.salary }}</div>
+    {% endif %}
+    {% if job.generating %}
+    <div class="card-generating">⏳ Analyzing fit and drafting documents…</div>
+    {% elif job.poor_fit %}
+    <div class="card-poorfit" title="{{ job.fit_reason }}">⚠ Weak fit (score {{ job.fit_score }}/10) — {{ job.fit_reason | striptags | truncate(120) }}</div>
     {% endif %}
     {% if job.reason %}
     <div class="card-reason">↳ {{ job.reason | truncate(100) }}</div>

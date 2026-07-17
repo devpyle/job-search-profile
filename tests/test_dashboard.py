@@ -493,3 +493,24 @@ def test_gen_status_endpoint(client, db):
     assert payload["ok"] is True
     assert payload["generating"] is False
     assert payload["status"] == "Drafting"
+
+
+def test_fit_text_coerces_list_and_dict(dashboard_app):
+    import dashboard as dash
+    assert dash._fit_text("already a string") == "already a string"
+    assert dash._fit_text(None) == ""
+    # A list of strings becomes markdown bullets (the bug that broke save_fit_analysis).
+    out = dash._fit_text(["first point", "- second point"])
+    assert out == "- first point\n- second point"
+    # A list of dicts is flattened, not passed through as an unbindable type.
+    assert "req" in dash._fit_text([{"req": "APIs", "match": "yes"}])
+    # A dict becomes bullet lines.
+    assert dash._fit_text({"gap": "insurance"}).startswith("- **gap**")
+
+
+def test_fit_score_coerces(dashboard_app):
+    import dashboard as dash
+    assert dash._fit_score(7) == 7.0
+    assert dash._fit_score("5") == 5.0
+    assert dash._fit_score(None) == 0
+    assert dash._fit_score("not a number") == 0

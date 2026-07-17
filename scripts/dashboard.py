@@ -590,6 +590,36 @@ Generate the resume and cover letter. Return ONLY the JSON object."""
     raise ValueError(f"Could not parse Claude response: {raw[:300]}")
 
 
+def _fit_text(value) -> str:
+    """Coerce a fit-analysis field to a markdown string. The model is asked for
+    markdown strings but sometimes returns JSON lists/objects; SQLite can't bind
+    those, so normalize here rather than letting save_fit_analysis throw."""
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, list):
+        lines = []
+        for item in value:
+            if isinstance(item, dict):
+                lines.append("- " + "; ".join(f"{k}: {v}" for k, v in item.items()))
+            else:
+                text = str(item).strip()
+                lines.append(text if text.startswith(("-", "*", "•")) else f"- {text}")
+        return "\n".join(lines)
+    if isinstance(value, dict):
+        return "\n".join(f"- **{k}**: {v}" for k, v in value.items())
+    return str(value)
+
+
+def _fit_score(value):
+    """Coerce match_score to a number; fall back to 0 on anything unexpected."""
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0
+
+
 def generate_fit_analysis(job: dict) -> dict:
     """Call Claude to produce a structured fit analysis for a job."""
     personal = _read_doc("personal-info.md")
@@ -649,11 +679,11 @@ No markdown fences, no preamble."""
     if match:
         data = json.loads(match.group())
         return {
-            "match_score": data.get("match_score", 0),
-            "matches":     data.get("matches", ""),
-            "gaps":        data.get("gaps", ""),
-            "stories":     data.get("stories", ""),
-            "summary":     data.get("summary", ""),
+            "match_score": _fit_score(data.get("match_score", 0)),
+            "matches":     _fit_text(data.get("matches", "")),
+            "gaps":        _fit_text(data.get("gaps", "")),
+            "stories":     _fit_text(data.get("stories", "")),
+            "summary":     _fit_text(data.get("summary", "")),
         }
     raise ValueError(f"Could not parse fit analysis response: {raw[:300]}")
 

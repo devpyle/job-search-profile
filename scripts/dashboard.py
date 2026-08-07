@@ -19,10 +19,12 @@ import subprocess
 import sys
 import threading
 from datetime import datetime
+from io import BytesIO
 from pathlib import Path
 from typing import Optional
 
 import anthropic
+import markdown as md_lib
 import requests
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -32,6 +34,7 @@ from docx.shared import Inches, Pt, RGBColor
 from dotenv import load_dotenv
 from flask import (Flask, g, jsonify, redirect, render_template,
                    request, send_file, url_for)
+from markupsafe import Markup
 
 load_dotenv()
 
@@ -119,6 +122,28 @@ app = Flask(
     static_folder=str(DASH_DIR / "static"),
 )
 app.secret_key = "job-search-dashboard-local"
+
+
+@app.context_processor
+def inject_asset_version():
+    """Cache-bust static assets by their mtime so a CSS/JS change is picked up on
+    the next load instead of being masked by the browser's cached copy."""
+    def asset_v(filename: str) -> int:
+        try:
+            return int(os.path.getmtime(DASH_DIR / "static" / filename))
+        except OSError:
+            return 0
+    return {"asset_v": asset_v}
+
+
+@app.template_filter("markdown")
+def render_markdown_filter(text):
+    """Render a markdown string (e.g. fit-analysis matches_md/gaps_md/stories_md)
+    to real HTML — used so the job-detail fit groups show actual bullets instead
+    of raw markdown text."""
+    if not text:
+        return ""
+    return Markup(md_lib.markdown(text, extensions=["sane_lists"]))
 
 
 @app.after_request
@@ -503,8 +528,8 @@ ADDITIONAL RULES (these override the rules above where they conflict):
 - For each job, curate only the most relevant achievements for THIS specific role. Do not dump all bullets — select and tailor.
 - LENGTH: target 2 pages, 3 pages absolute maximum. Never produce 4 pages. Be ruthless. Bullets per role: 4-5 for the current/most recent role, 3-4 for mid-career roles, and only 2 for roles older than ~8 years. Keep the summary to 3-4 lines. Selected Projects: at most 2 projects, 1 bullet each. When in doubt, cut the least relevant content rather than keep it.
 - BULLET LENGTH: keep every bullet CONCISE — one line, two lines maximum. Lead with the outcome or action, then drop filler clauses ("in order to", "responsible for", long trailing descriptions). A bullet that wraps to three lines is too long; tighten it.
-- Resume structure: # Name / contact line / ## Summary / ## Experience / ### Job Title sections / ## Selected Projects (when relevant, see below) / ## Skills / ## Education
-- Selected Projects section: AFTER ## Experience, include a ## Selected Projects section IF the target role values hands-on AI, technical depth, data/ML, or a builder profile. Use the same format as jobs: ### Project Name, then a line formatted as **Type / tech** | link-or-status, then 1-2 tailored bullets. Pull ONLY from the SELECTED PROJECTS provided below. Tailor which projects appear to the role. For the Polymarket project, the codebase is private — mention it and its outcomes but never imply the source is public. Omit this whole section for pure process/BA roles where it adds nothing.
+- Resume structure: # Name / contact line / ## Summary / ## Experience / ### Job Title sections / ## Education / ## Skills / ## Selected Projects (when relevant, see below). This order is deliberate and ATS-critical: ## Education must come IMMEDIATELY after ## Experience. Workday and similar resume parsers use the Education heading as a hard boundary that stops the last job's description from swallowing whatever follows it; placing Projects (which have no company/dates) right after Experience makes the parser dump project text into the final job box and misalign every role's description. Never put Selected Projects between Experience and Education.
+- Selected Projects section: place it LAST, AFTER ## Skills, and include a ## Selected Projects section IF the target role values hands-on AI, technical depth, data/ML, or a builder profile. Use the same format as jobs: ### Project Name, then a line formatted as **Type / tech** | link-or-status, then 1-2 tailored bullets. Pull ONLY from the SELECTED PROJECTS provided below. Tailor which projects appear to the role. For the Polymarket project, the codebase is private — mention it and its outcomes but never imply the source is public. Omit this whole section for pure process/BA roles where it adds nothing.
 - Cover letter: plain paragraphs only — date, greeting, 3-4 body paragraphs, sign-off. No markdown headers.
 - Respond ONLY with a valid JSON object — no preamble, no explanation, no markdown fences.
 - JSON format: {{"resume": "...", "cover_letter": "..."}}
@@ -1260,6 +1285,15 @@ def board():
         job = dict(row)
         job["is_stale"] = row["id"] in stale_ids
         job["generating"] = row["id"] in _GENERATING
+        # Days the card has sat in its current status (drives the Applied-column
+        # day counter that replaces the generic "stale" badge there).
+        job["days_in_status"] = None
+        changed = row["status_changed_at"]
+        if changed:
+            try:
+                job["days_in_status"] = (datetime.now() - datetime.fromisoformat(changed)).days
+            except (ValueError, TypeError):
+                pass
         # A Drafting card whose fit analysis scored below the cutoff is a weak
         # fit that stayed put: flag it so the card shows a red bar + the reason.
         fit_score = job.get("fit_score")
@@ -1679,9 +1713,17 @@ def job_detail(job_id):
     if not job:
         return "Job not found", 404
     notes     = data.get_notes(db, job_id)
-    docs      = data.get_documents(db, job_id)
+    docs      = [dict(d) for d in data.get_documents(db, job_id)]
     apply_url = data.get_apply_url(db, job_id)
     fit       = data.get_fit_analysis(db, job_id)
+
+    # Latest document version for the top-of-page one-click PDF download tiles
+    # (req #2): prefer the version marked final, else the highest version.
+    # docs is already ordered by version DESC (see data.get_documents).
+    latest_doc = None
+    if docs:
+        finals = [d for d in docs if d.get("is_final")]
+        latest_doc = finals[0] if finals else docs[0]
 
     contacts = offer = rounds = None
     prep_docs = prep_files = None
@@ -1698,7 +1740,8 @@ def job_detail(job_id):
         "job_detail.html",
         job=dict(job),
         notes=[dict(n) for n in notes],
-        docs=[dict(d) for d in docs],
+        docs=docs,
+        latest_doc=latest_doc,
         apply_url=apply_url,
         fit=fit,
         contacts=contacts,
@@ -2030,6 +2073,60 @@ def download_pdf(job_id, doc_id, doc_type):
 
     return send_file(str(tmp_path), as_attachment=True,
                      download_name=filename, mimetype="application/pdf")
+
+
+def _candidate_pdf_filename(doc_type: str, job: dict) -> str:
+    """e.g. 'Firstname-Lastname-Resume-Company.pdf' — clean, candidate-name-first
+    filename for the job-detail one-click download tiles."""
+    candidate = re.sub(r"\s+", "-", CANDIDATE_NAME.strip())
+    kind      = "Resume" if doc_type == "resume" else "Cover-Letter"
+    company   = re.sub(r"[^\w]+", "-", (job.get("company") or "").strip()).strip("-") or "Company"
+    return f"{candidate}-{kind}-{company}.pdf"
+
+
+def _serve_doc_pdf(job_id, doc_id, doc_type):
+    """One-click styled PDF attachment for the job-detail download tiles.
+
+    Reuses the same markdown -> styled HTML -> Playwright-rendered PDF
+    pipeline as download_pdf() above (matches the personal website resume
+    design; preserves the markdown's section order exactly, so Education
+    still lands after Experience for ATS parsing). Served straight from
+    memory (no temp file) with a clean, candidate-name-first filename.
+    """
+    db  = get_db()
+    job = data.get_job(db, job_id)
+    doc = data.get_document(db, doc_id, job_id)
+    if not job or not doc:
+        return "Not found", 404
+    job = dict(job)
+
+    if doc_type == "resume":
+        html_out = markdown_to_html(doc["resume_md"] or "", kind="resume",
+                                    title=f"{job['company']} — Resume")
+    else:
+        html_out = markdown_to_html(doc["coverletter_md"] or "", kind="coverletter",
+                                    title=f"{job['company']} — Cover Letter")
+
+    try:
+        pdf_bytes = html_to_pdf_bytes(html_out)
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"PDF render failed: {e}"}), 500
+
+    filename = _candidate_pdf_filename(doc_type, job)
+    return send_file(
+        BytesIO(pdf_bytes), as_attachment=True,
+        download_name=filename, mimetype="application/pdf",
+    )
+
+
+@app.route("/jobs/<job_id>/documents/<int:doc_id>/resume.pdf")
+def download_resume_pdf(job_id, doc_id):
+    return _serve_doc_pdf(job_id, doc_id, "resume")
+
+
+@app.route("/jobs/<job_id>/documents/<int:doc_id>/coverletter.pdf")
+def download_coverletter_pdf(job_id, doc_id):
+    return _serve_doc_pdf(job_id, doc_id, "coverletter")
 
 
 @app.route("/jobs/<job_id>/delete", methods=["POST"])

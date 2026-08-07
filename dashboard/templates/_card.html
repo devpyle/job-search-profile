@@ -4,8 +4,17 @@
   <div class="card-body">
     <div class="card-title">{{ job.title }}</div>
     <div class="card-meta">
-      <span class="company">{{ job.company or '—' }}</span>
-      {% if job.location %}<span class="sep">·</span><span class="location">{{ job.location }}</span>{% endif %}
+      <span class="meta-text">
+        <span class="company">{{ job.company or '—' }}</span>
+        {% if job.location %}<span class="sep">·</span><span class="location">{{ job.location }}</span>{% endif %}
+      </span>
+      {% if job.fit_score and not job.poor_fit %}
+      {% if job.fit_score >= 7 %}{% set fcls = 'strong' %}{% set flabel = 'Strong' %}
+      {% elif job.fit_score >= 6 %}{% set fcls = 'good' %}{% set flabel = 'Good' %}
+      {% elif job.fit_score >= 5 %}{% set fcls = 'weak' %}{% set flabel = 'Weak' %}
+      {% else %}{% set fcls = 'skip' %}{% set flabel = "Worth a look" %}{% endif %}
+      <span class="fit-badge fit-{{ fcls }}" title="Fit score {{ job.fit_score }}/10">{{ flabel }} · {{ job.fit_score | int }}</span>
+      {% endif %}
     </div>
     {% if job.salary and job.salary != 'Not listed' %}
     <div class="card-salary">{{ job.salary }}</div>
@@ -30,7 +39,12 @@
         {% if job.has_final_docs %}
         <span class="doc-badge" title="Docs ready">📄</span>
         {% endif %}
-        {% if job.is_stale %}
+        {% if job.status == 'Applied' and job.days_in_status is not none %}
+        {% if job.days_in_status >= 14 %}{% set dcls = 'day-old' %}
+        {% elif job.days_in_status >= 7 %}{% set dcls = 'day-warn' %}
+        {% else %}{% set dcls = 'day-fresh' %}{% endif %}
+        <span class="days-badge {{ dcls }}" title="{{ job.days_in_status }} day(s) in Applied — no response yet">{{ job.days_in_status }}d</span>
+        {% elif job.is_stale %}
         <span class="stale-badge" title="Stale — needs attention">stale</span>
         {% endif %}
         {% if job.status == 'Reviewing' %}

@@ -2,290 +2,398 @@
 {% block title %}{{ job.title }}{% endblock %}
 
 {% block content %}
-<div class="detail-wrap">
+{% if fit %}
+  {% set score_num = fit.match_score %}
+  {% if score_num >= 7 %}
+    {% set fit_label = "Strong fit" %}{% set fit_cls = "jd-fit-strong" %}
+  {% elif score_num >= 6 %}
+    {% set fit_label = "Good fit" %}{% set fit_cls = "jd-fit-good" %}
+  {% elif score_num >= 5 %}
+    {% set fit_label = "Solid match" %}{% set fit_cls = "jd-fit-solid" %}
+  {% else %}
+    {% set fit_label = "Worth a look" %}{% set fit_cls = "jd-fit-look" %}
+  {% endif %}
+{% endif %}
 
-  <!-- Left panel: job info + actions -->
-  <div class="detail-main">
-    <div class="detail-header">
-      <a href="{{ url_for('board') }}" class="back-link">← Board</a>
-      <div class="detail-status-row">
-        <span class="status-pill" style="background:{{ status_colors.get(job.status,'#94a3b8') }}">
-          {{ job.status }}
-        </span>
-        <span class="status-hint">Drag the card on the Board to change status</span>
-      </div>
-    </div>
+<div class="jd-page">
 
-    <h2 class="detail-title">{{ job.title }}</h2>
-    <div class="detail-meta">
-      <span>{{ job.company or '—' }}</span>
-      {% if job.location %}<span>· {{ job.location }}</span>{% endif %}
-      {% if job.salary and job.salary != 'Not listed' %}<span>· {{ job.salary }}</span>{% endif %}
-      {% if job.source %}<span>· {{ job.source }}</span>{% endif %}
-      {% if job.posted %}<span>· {{ job.posted }}</span>{% endif %}
-    </div>
-
-    {% if job.reason %}
-    <div class="detail-reason">↳ {{ job.reason }}</div>
-    {% endif %}
-
-    <div class="detail-links">
-      {% if job.url %}
-      <a href="{{ job.url }}" target="_blank" class="btn btn-outline">↗ Original Posting</a>
-      {% endif %}
-      {% if apply_url %}
-      <a href="{{ apply_url }}" target="_blank" class="btn btn-primary">↗ Apply Now</a>
-      {% endif %}
-    </div>
-
-    <!-- Application URL -->
-    <div class="apply-url-section">
-      <label class="field-label">Application URL</label>
-      <div class="apply-url-row">
-        <input type="url" id="apply-url-input" class="apply-url-input"
-               placeholder="Paste the direct application link here…"
-               value="{{ apply_url }}">
-        <button class="btn-sm btn-primary" onclick="saveApplyUrl('{{ job.id }}')">Save</button>
-      </div>
-    </div>
-
-    {% if job.status in ('Interviewing', 'Offer') %}
-    <!-- Interview Tracker -->
-    <div class="interview-tracker">
-
-      <!-- Contacts -->
-      <div class="tracker-section">
-        <div class="tracker-title">People</div>
-        <div id="contacts-list">
-          {% for c in contacts %}
-          <div class="contact-row" id="contact-{{ c.id }}">
-            <span class="contact-role-badge">{{ c.role }}</span>
-            <span class="contact-name">{{ c.name }}</span>
-            {% if c.title %}<span class="contact-meta">{{ c.title }}</span>{% endif %}
-            {% if c.email %}<a href="mailto:{{ c.email }}" class="contact-link">{{ c.email }}</a>{% endif %}
-            {% if c.linkedin %}<a href="{{ c.linkedin }}" target="_blank" class="contact-link">LinkedIn</a>{% endif %}
-            <button class="btn-icon" onclick="deleteContact('{{ job.id }}', {{ c.id }})">✕</button>
-          </div>
-          {% else %}
-          <div class="empty-state" id="no-contacts">No contacts added yet.</div>
-          {% endfor %}
-        </div>
-        <div class="add-contact-form">
-          <select id="contact-role" class="input-sm">
-            <option value="recruiter">Recruiter</option>
-            <option value="hiring_manager">Hiring Manager</option>
-            <option value="interviewer">Interviewer</option>
-          </select>
-          <input type="text" id="contact-name" class="input-sm" placeholder="Name">
-          <input type="text" id="contact-title" class="input-sm" placeholder="Title (optional)">
-          <input type="text" id="contact-email" class="input-sm" placeholder="Email (optional)">
-          <input type="text" id="contact-linkedin" class="input-sm" placeholder="LinkedIn URL (optional)">
-          <button class="btn-sm btn-primary" onclick="addContact('{{ job.id }}')">Add</button>
-        </div>
-      </div>
-
-      <!-- Interview Rounds -->
-      <div class="tracker-section">
-        <div class="tracker-title">Interview Rounds</div>
-        <div id="rounds-list">
-          {% for r in rounds %}
-          <div class="round-row" id="round-{{ r.id }}">
-            <div class="round-header">
-              <span class="round-num">Round {{ r.round_num }}</span>
-              {% if r.date %}<span class="round-date">{{ r.date[:10] }}</span>{% endif %}
-              {% if r.format %}<span class="round-format">{{ r.format }}</span>{% endif %}
-              {% if r.thank_you %}<span class="thank-you-badge">✓ Thank you sent</span>{% endif %}
-              <button class="btn-icon" onclick="deleteRound('{{ job.id }}', {{ r.id }})">✕</button>
-            </div>
-            {% if r.interviewers %}<div class="round-meta">With: {{ r.interviewers }}</div>{% endif %}
-            {% if r.notes %}<div class="round-notes">{{ r.notes }}</div>{% endif %}
-          </div>
-          {% else %}
-          <div class="empty-state" id="no-rounds">No rounds logged yet.</div>
-          {% endfor %}
-        </div>
-        <div class="add-round-form">
-          <input type="date" id="round-date" class="input-sm">
-          <select id="round-format" class="input-sm">
-            <option value="">Format…</option>
-            <option value="Video">Video</option>
-            <option value="Phone">Phone</option>
-            <option value="Panel">Panel</option>
-            <option value="Take-home">Take-home</option>
-            <option value="Onsite">Onsite</option>
-          </select>
-          <input type="text" id="round-interviewers" class="input-sm" placeholder="Interviewer(s)">
-          <textarea id="round-notes" class="input-sm" rows="2" placeholder="Notes, topics covered, how it went…"></textarea>
-          <label class="checkbox-label">
-            <input type="checkbox" id="round-thankyou"> Thank you note sent
-          </label>
-          <button class="btn-sm btn-primary" onclick="addRound('{{ job.id }}')">Log Round</button>
-        </div>
-      </div>
-
-      <!-- Interview Prep Docs -->
-      <div class="tracker-section">
-        <div class="tracker-title">Interview Prep</div>
-        <div id="prep-list">
-          {% for p in prep_docs %}
-          <div class="prep-row" id="prep-{{ p.id }}">
-            <span class="prep-icon">🎤</span>
-            <a href="{{ url_for('view_prep', job_id=job.id, prep_id=p.id) }}" target="_blank" class="prep-link">{{ p.title or p.filename }}</a>
-            <span class="prep-file">{{ p.filename }}</span>
-            <button class="btn-icon" onclick="detachPrep('{{ job.id }}', {{ p.id }})" title="Unlink (file stays on disk)">✕</button>
-          </div>
-          {% else %}
-          <div class="empty-state" id="no-prep">No prep docs linked yet.</div>
-          {% endfor %}
-        </div>
-        {% if prep_files %}
-        <div class="prep-hint">Link another prep file from <code>output/interview-prep/</code>:</div>
-        <div class="add-prep-form">
-          <select id="prep-file" class="input-sm">
-            <option value="" selected>Choose a file…</option>
-            {% for f in prep_files %}
-            <option value="{{ f }}">{{ f }}</option>
-            {% endfor %}
-          </select>
-          <button class="btn-sm btn-primary" onclick="attachPrep('{{ job.id }}')">Link</button>
-        </div>
-        {% else %}
-        <div class="prep-hint">Drop a markdown file in <code>output/interview-prep/</code> to link it here.</div>
-        {% endif %}
-      </div>
-
-      {% if job.status == 'Offer' %}
-      <!-- Offer Details -->
-      <div class="tracker-section offer-section">
-        <div class="tracker-title">Offer Details</div>
-        <div class="offer-fields">
-          <label class="field-label">Base Salary</label>
-          <input type="text" id="offer-base" class="apply-url-input" placeholder="e.g. $140,000" value="{{ offer.base if offer else '' }}">
-          <label class="field-label">Bonus</label>
-          <input type="text" id="offer-bonus" class="apply-url-input" placeholder="e.g. 15% target" value="{{ offer.bonus if offer else '' }}">
-          <label class="field-label">Equity</label>
-          <input type="text" id="offer-equity" class="apply-url-input" placeholder="e.g. $50K RSU over 4 years" value="{{ offer.equity if offer else '' }}">
-          <label class="field-label">Benefits notes</label>
-          <input type="text" id="offer-benefits" class="apply-url-input" placeholder="Health, 401k match, PTO…" value="{{ offer.benefits if offer else '' }}">
-          <label class="field-label">Decision deadline</label>
-          <input type="date" id="offer-deadline" class="apply-url-input" value="{{ offer.deadline if offer else '' }}">
-          <label class="field-label">Negotiation notes</label>
-          <textarea id="offer-notes" class="gen-instructions" rows="3" placeholder="Counter offers, leverage, notes…">{{ offer.notes if offer else '' }}</textarea>
-          <button class="btn btn-primary" onclick="saveOffer('{{ job.id }}')">Save Offer Details</button>
-        </div>
-      </div>
-      {% endif %}
-
-    </div>
-    {% endif %}
-
-    {% if job.status == 'Reviewing' %}
-    <!-- Reviewing checklist -->
-    <div class="review-checklist">
-      <div class="checklist-title">Reviewing checklist</div>
-      <label><input type="checkbox"> Read the full job description</label>
-      <label><input type="checkbox"> Verify remote / location works</label>
-      <label><input type="checkbox"> Check salary range (listed or Glassdoor)</label>
-      <label><input type="checkbox"> Research the company (size, funding, culture)</label>
-      <label><input type="checkbox"> Find the hiring manager on LinkedIn</label>
-      <label><input type="checkbox"> Paste the application URL above</label>
-      <label><input type="checkbox"> Ready to apply → drag card to Drafting</label>
-    </div>
-    {% endif %}
-
-    <!-- Fit Analysis -->
-    <div class="fit-section">
-      <h3>Fit Analysis</h3>
-      {% if fit %}
-      <div class="fit-results" id="fit-results">
-        <div class="fit-score-row">
-          <span class="fit-score {% if fit.match_score >= 7 %}score-high{% elif fit.match_score >= 5 %}score-mid{% else %}score-low{% endif %}">
-            {{ fit.match_score }}/10
-          </span>
-          <span class="fit-date">Analyzed {{ fit.generated_at[:16].replace('T',' ') }}</span>
-          <button class="btn-sm btn-outline" onclick="runFitAnalysis('{{ job.id }}')" id="rerun-fit-btn">Re-analyze</button>
-        </div>
-        <div class="fit-summary">{{ fit.summary }}</div>
-
-        <details class="fit-detail" open>
-          <summary>Experience Matches</summary>
-          <div class="fit-content">{{ fit.matches_md }}</div>
-        </details>
-
-        <details class="fit-detail">
-          <summary>Gaps &amp; Mitigations</summary>
-          <div class="fit-content">{{ fit.gaps_md }}</div>
-        </details>
-
-        <details class="fit-detail">
-          <summary>Relevant Interview Stories</summary>
-          <div class="fit-content fit-stories">{{ fit.stories_md }}</div>
-        </details>
-      </div>
-      {% else %}
-      <p class="fit-empty">Run a fit analysis to see how your experience matches this role, identify gaps, and surface relevant interview stories.</p>
-      <button class="btn btn-outline" onclick="runFitAnalysis('{{ job.id }}')" id="fit-btn">
-        Analyze Fit
-      </button>
-      <div class="fit-status hidden" id="fit-status"></div>
-      {% endif %}
-    </div>
-
-    {% if job.description %}
-    <div class="detail-description">{{ job.description }}</div>
-    {% endif %}
-
-    <!-- Generate docs section -->
-    <div class="gen-section">
-      <h3>Application Documents</h3>
-      {% if docs %}
-      <div class="doc-versions">
-        {% for d in docs %}
-        <div class="doc-version-row">
-          <span>v{{ d.version }} — {{ d.generated_at[:16] }}
-            {% if d.is_final %}<span class="final-badge">Final</span>{% endif %}
-          </span>
-          <a href="{{ url_for('view_draft', job_id=job.id, doc_id=d.id) }}" class="btn-sm">
-            Edit / Download
-          </a>
-        </div>
+  <!-- TOP BAR: back + status mover (req #4 — move status without a board trip) -->
+  <div class="jd-topbar">
+    <a href="{{ url_for('board') }}" class="back-link">← Board</a>
+    <div class="jd-status-mover">
+      <span class="jd-label">Move to</span>
+      <select id="jd-status-select" class="jd-status-select" aria-label="Move to column"
+              onchange="moveJob('{{ job.id }}', this.value)">
+        {% for s in statuses %}
+        <option value="{{ s }}" {% if s == job.status %}selected{% endif %}>{{ s }}</option>
         {% endfor %}
-      </div>
-      {% endif %}
-
-      <div class="gen-form">
-        <textarea id="gen-instructions" class="gen-instructions"
-                  placeholder="Optional instructions (e.g. 'emphasize the API platform work', 'keep to one page')…"
-                  rows="2"></textarea>
-        <button class="btn btn-primary" onclick="generateDocs('{{ job.id }}')" id="gen-btn">
-          ✨ Generate Resume + Cover Letter
-        </button>
-      </div>
-      <div class="gen-status hidden" id="gen-status"></div>
-    </div>
-
-    <!-- Delete -->
-    <div class="danger-zone">
-      <button class="btn btn-danger" onclick="deleteJob('{{ job.id }}')">Remove from Board</button>
+      </select>
+      <button type="button" class="jd-btn-applied" onclick="moveJob('{{ job.id }}', 'Applied')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+        Mark Applied
+      </button>
     </div>
   </div>
 
-  <!-- Right panel: notes -->
-  <div class="detail-sidebar">
-    <h3>Notes</h3>
-    <div class="note-form">
-      <textarea id="note-input" rows="3" placeholder="Add a note…"></textarea>
-      <button class="btn btn-primary" onclick="addNote('{{ job.id }}')">Add Note</button>
-    </div>
-    <div class="notes-list" id="notes-list">
-      {% for note in notes %}
-      <div class="note-item">
-        <div class="note-time">{{ note.created_at[:16].replace('T',' ') }}</div>
-        <div class="note-body">{{ note.body }}</div>
+  <!-- HEADER -->
+  <div class="jd-head">
+    <div>
+      <h1>{{ job.title }}</h1>
+      <div class="jd-meta">
+        <span>{{ job.company or '—' }}</span>
+        {% if job.location %}<span class="jd-sep">·</span><span>{{ job.location }}</span>{% endif %}
+        {% if job.salary and job.salary != 'Not listed' %}<span class="jd-sep">·</span><span class="jd-salary">{{ job.salary }}</span>{% endif %}
+        {% if job.source %}<span class="jd-sep">·</span><span>{{ job.source }}</span>{% endif %}
+        {% if job.posted %}<span class="jd-sep">·</span><span>{{ job.posted }}</span>{% endif %}
+        <span class="jd-statuspill" id="jd-status-pill" style="background:{{ status_colors.get(job.status,'#94a3b8') }}">
+          <span class="jd-dot"></span>{{ job.status }}
+        </span>
       </div>
-      {% else %}
-      <div class="empty-state" id="no-notes">No notes yet.</div>
-      {% endfor %}
+      {% if job.reason %}<div class="jd-reason">↳ {{ job.reason }}</div>{% endif %}
+    </div>
+    {% if fit %}
+    <div class="jd-fitchip {{ fit_cls }}">
+      <div class="jd-score">{{ "%g"|format(score_num) }}<small>/10</small></div>
+      <div class="jd-fitlabel">{{ fit_label }}</div>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- PRIMARY DOCS ROW (req #2: top, one-click PDF download) -->
+  {% if latest_doc %}
+  <div class="jd-docs-row">
+    <a class="jd-doc-dl" href="{{ url_for('download_resume_pdf', job_id=job.id, doc_id=latest_doc.id) }}">
+      <div class="jd-doc-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h5"/></svg></div>
+      <div class="jd-doc-txt">
+        <div class="jd-t">Resume</div>
+        <div class="jd-s">v{{ latest_doc.version }}{% if latest_doc.is_final %} · Final{% endif %} · updated {{ latest_doc.generated_at[:10] }}</div>
+      </div>
+      <span class="jd-dl"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12M7 12l5 5 5-5M5 21h14"/></svg>Download PDF</span>
+    </a>
+    <a class="jd-doc-dl" href="{{ url_for('download_coverletter_pdf', job_id=job.id, doc_id=latest_doc.id) }}">
+      <div class="jd-doc-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 4h16v16H4z"/><path d="M8 9h8M8 13h8M8 17h5"/></svg></div>
+      <div class="jd-doc-txt">
+        <div class="jd-t">Cover Letter</div>
+        <div class="jd-s">v{{ latest_doc.version }}{% if latest_doc.is_final %} · Final{% endif %} · updated {{ latest_doc.generated_at[:10] }}</div>
+      </div>
+      <span class="jd-dl"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12M7 12l5 5 5-5M5 21h14"/></svg>Download PDF</span>
+    </a>
+  </div>
+  {% else %}
+  <div class="jd-card jd-gen-fallback">
+    <h2>Application Documents</h2>
+    <p class="jd-fit-empty">No documents yet — generate a tailored resume and cover letter for this role.</p>
+    <div class="gen-form">
+      <textarea id="gen-instructions" class="gen-instructions"
+                placeholder="Optional instructions (e.g. 'emphasize the API platform work', 'keep to one page')…"
+                rows="2"></textarea>
+      <button class="btn btn-primary" onclick="generateDocs('{{ job.id }}')" id="gen-btn">
+        ✨ Generate Resume + Cover Letter
+      </button>
+    </div>
+    <div class="gen-status hidden" id="gen-status"></div>
+  </div>
+  {% endif %}
+
+  <div class="jd-doc-actions">
+    {% if apply_url %}<a href="{{ apply_url }}" target="_blank" class="btn btn-primary">↗ Apply Now</a>{% endif %}
+    {% if job.url %}<a href="{{ job.url }}" target="_blank" class="btn btn-outline">↗ Original Posting</a>{% endif %}
+    {% if latest_doc %}<a href="{{ url_for('view_draft', job_id=job.id, doc_id=latest_doc.id) }}" class="btn btn-outline">✎ Edit / Regenerate</a>{% endif %}
+  </div>
+
+  <div class="jd-grid">
+    <div class="jd-col">
+
+      <!-- FIT ANALYSIS (req #3: bullets, positive framing, never "bad fit") -->
+      <div class="jd-card">
+        <h2>
+          Fit Analysis
+          {% if fit %}<button type="button" class="jd-re" onclick="runFitAnalysis('{{ job.id }}')" id="rerun-fit-btn">↻ Re-analyze</button>{% endif %}
+        </h2>
+        {% if fit %}
+        <div id="fit-results">
+          <div class="jd-fit-summary">{{ fit.summary }}</div>
+          <div class="jd-fit-groups">
+            <div class="jd-fit-g jd-fit-strengths">
+              <div class="jd-g-head"><span class="jd-tag"></span><span class="jd-gt">Why you're a strong match</span></div>
+              <div class="jd-fit-md">{{ fit.matches_md | markdown }}</div>
+            </div>
+            <div class="jd-fit-g jd-fit-prep">
+              <div class="jd-g-head"><span class="jd-tag"></span><span class="jd-gt">Prepare for &amp; confirm</span></div>
+              <div class="jd-fit-md">{{ fit.gaps_md | markdown }}</div>
+            </div>
+            <div class="jd-fit-g jd-fit-stories">
+              <div class="jd-g-head"><span class="jd-tag"></span><span class="jd-gt">Stories to bring</span></div>
+              <div class="jd-fit-md">{{ fit.stories_md | markdown }}</div>
+            </div>
+          </div>
+          <div class="jd-fit-note">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+            <span>Scored on the detail available in the posting. A lower score reflects limited information to match against, not a poor fit — confirm the unknowns above before deciding.</span>
+          </div>
+          <div class="jd-tl-t" style="margin-top:12px;">Analyzed {{ fit.generated_at[:16].replace('T',' ') }}</div>
+        </div>
+        {% else %}
+        <p class="jd-fit-empty">Run a fit analysis to see how your experience matches this role, identify gaps, and surface relevant interview stories.</p>
+        <button class="btn btn-outline" onclick="runFitAnalysis('{{ job.id }}')" id="fit-btn">
+          Analyze Fit
+        </button>
+        <div class="fit-status hidden" id="fit-status"></div>
+        {% endif %}
+      </div>
+
+      {% if job.description %}
+      <!-- DESCRIPTION -->
+      <div class="jd-card">
+        <h2>Job Description</h2>
+        <div class="jd-desc jd-clamp" id="jd-desc">{{ job.description }}</div>
+        <div class="jd-desc-toggle"
+             onclick="document.getElementById('jd-desc').classList.toggle('jd-clamp'); this.textContent = this.textContent==='Show full description' ? 'Show less' : 'Show full description';">
+          Show full description
+        </div>
+      </div>
+      {% endif %}
+
+      <!-- APPLICATION URL -->
+      <div class="jd-card">
+        <h2>Application</h2>
+        <div class="apply-url-section" style="margin-bottom:0;">
+          <label class="field-label">Direct application link</label>
+          <div class="apply-url-row">
+            <input type="url" id="apply-url-input" class="apply-url-input"
+                   placeholder="Paste the direct application link here…"
+                   value="{{ apply_url }}">
+            <button class="btn-sm btn-primary" onclick="saveApplyUrl('{{ job.id }}')">Save</button>
+          </div>
+        </div>
+      </div>
+
+      {% if job.status == 'Reviewing' %}
+      <!-- Reviewing checklist -->
+      <div class="review-checklist">
+        <div class="checklist-title">Reviewing checklist</div>
+        <label><input type="checkbox"> Read the full job description</label>
+        <label><input type="checkbox"> Verify remote / location works</label>
+        <label><input type="checkbox"> Check salary range (listed or Glassdoor)</label>
+        <label><input type="checkbox"> Research the company (size, funding, culture)</label>
+        <label><input type="checkbox"> Find the hiring manager on LinkedIn</label>
+        <label><input type="checkbox"> Paste the application URL above</label>
+        <label><input type="checkbox"> Ready to apply → move to Drafting</label>
+      </div>
+      {% endif %}
+
+      {% if job.status in ('Interviewing', 'Offer') %}
+      <!-- Interview Tracker -->
+      <div class="interview-tracker">
+
+        <!-- Contacts -->
+        <div class="tracker-section">
+          <div class="tracker-title">People</div>
+          <div id="contacts-list">
+            {% for c in contacts %}
+            <div class="contact-row" id="contact-{{ c.id }}">
+              <span class="contact-role-badge">{{ c.role }}</span>
+              <span class="contact-name">{{ c.name }}</span>
+              {% if c.title %}<span class="contact-meta">{{ c.title }}</span>{% endif %}
+              {% if c.email %}<a href="mailto:{{ c.email }}" class="contact-link">{{ c.email }}</a>{% endif %}
+              {% if c.linkedin %}<a href="{{ c.linkedin }}" target="_blank" class="contact-link">LinkedIn</a>{% endif %}
+              <button class="btn-icon" onclick="deleteContact('{{ job.id }}', {{ c.id }})">✕</button>
+            </div>
+            {% else %}
+            <div class="empty-state" id="no-contacts">No contacts added yet.</div>
+            {% endfor %}
+          </div>
+          <div class="add-contact-form">
+            <select id="contact-role" class="input-sm">
+              <option value="recruiter">Recruiter</option>
+              <option value="hiring_manager">Hiring Manager</option>
+              <option value="interviewer">Interviewer</option>
+            </select>
+            <input type="text" id="contact-name" class="input-sm" placeholder="Name">
+            <input type="text" id="contact-title" class="input-sm" placeholder="Title (optional)">
+            <input type="text" id="contact-email" class="input-sm" placeholder="Email (optional)">
+            <input type="text" id="contact-linkedin" class="input-sm" placeholder="LinkedIn URL (optional)">
+            <button class="btn-sm btn-primary" onclick="addContact('{{ job.id }}')">Add</button>
+          </div>
+        </div>
+
+        <!-- Interview Rounds -->
+        <div class="tracker-section">
+          <div class="tracker-title">Interview Rounds</div>
+          <div id="rounds-list">
+            {% for r in rounds %}
+            <div class="round-row" id="round-{{ r.id }}">
+              <div class="round-header">
+                <span class="round-num">Round {{ r.round_num }}</span>
+                {% if r.date %}<span class="round-date">{{ r.date[:10] }}</span>{% endif %}
+                {% if r.format %}<span class="round-format">{{ r.format }}</span>{% endif %}
+                {% if r.thank_you %}<span class="thank-you-badge">✓ Thank you sent</span>{% endif %}
+                <button class="btn-icon" onclick="deleteRound('{{ job.id }}', {{ r.id }})">✕</button>
+              </div>
+              {% if r.interviewers %}<div class="round-meta">With: {{ r.interviewers }}</div>{% endif %}
+              {% if r.notes %}<div class="round-notes">{{ r.notes }}</div>{% endif %}
+            </div>
+            {% else %}
+            <div class="empty-state" id="no-rounds">No rounds logged yet.</div>
+            {% endfor %}
+          </div>
+          <div class="add-round-form">
+            <input type="date" id="round-date" class="input-sm">
+            <select id="round-format" class="input-sm">
+              <option value="">Format…</option>
+              <option value="Video">Video</option>
+              <option value="Phone">Phone</option>
+              <option value="Panel">Panel</option>
+              <option value="Take-home">Take-home</option>
+              <option value="Onsite">Onsite</option>
+            </select>
+            <input type="text" id="round-interviewers" class="input-sm" placeholder="Interviewer(s)">
+            <textarea id="round-notes" class="input-sm" rows="2" placeholder="Notes, topics covered, how it went…"></textarea>
+            <label class="checkbox-label">
+              <input type="checkbox" id="round-thankyou"> Thank you note sent
+            </label>
+            <button class="btn-sm btn-primary" onclick="addRound('{{ job.id }}')">Log Round</button>
+          </div>
+        </div>
+
+        <!-- Interview Prep Docs -->
+        <div class="tracker-section">
+          <div class="tracker-title">Interview Prep</div>
+          <div id="prep-list">
+            {% for p in prep_docs %}
+            <div class="prep-row" id="prep-{{ p.id }}">
+              <span class="prep-icon">🎤</span>
+              <a href="{{ url_for('view_prep', job_id=job.id, prep_id=p.id) }}" target="_blank" class="prep-link">{{ p.title or p.filename }}</a>
+              <span class="prep-file">{{ p.filename }}</span>
+              <button class="btn-icon" onclick="detachPrep('{{ job.id }}', {{ p.id }})" title="Unlink (file stays on disk)">✕</button>
+            </div>
+            {% else %}
+            <div class="empty-state" id="no-prep">No prep docs linked yet.</div>
+            {% endfor %}
+          </div>
+          {% if prep_files %}
+          <div class="prep-hint">Link another prep file from <code>output/interview-prep/</code>:</div>
+          <div class="add-prep-form">
+            <select id="prep-file" class="input-sm">
+              <option value="" selected>Choose a file…</option>
+              {% for f in prep_files %}
+              <option value="{{ f }}">{{ f }}</option>
+              {% endfor %}
+            </select>
+            <button class="btn-sm btn-primary" onclick="attachPrep('{{ job.id }}')">Link</button>
+          </div>
+          {% else %}
+          <div class="prep-hint">Drop a markdown file in <code>output/interview-prep/</code> to link it here.</div>
+          {% endif %}
+        </div>
+
+        {% if job.status == 'Offer' %}
+        <!-- Offer Details -->
+        <div class="tracker-section offer-section">
+          <div class="tracker-title">Offer Details</div>
+          <div class="offer-fields">
+            <label class="field-label">Base Salary</label>
+            <input type="text" id="offer-base" class="apply-url-input" placeholder="e.g. $140,000" value="{{ offer.base if offer else '' }}">
+            <label class="field-label">Bonus</label>
+            <input type="text" id="offer-bonus" class="apply-url-input" placeholder="e.g. 15% target" value="{{ offer.bonus if offer else '' }}">
+            <label class="field-label">Equity</label>
+            <input type="text" id="offer-equity" class="apply-url-input" placeholder="e.g. $50K RSU over 4 years" value="{{ offer.equity if offer else '' }}">
+            <label class="field-label">Benefits notes</label>
+            <input type="text" id="offer-benefits" class="apply-url-input" placeholder="Health, 401k match, PTO…" value="{{ offer.benefits if offer else '' }}">
+            <label class="field-label">Decision deadline</label>
+            <input type="date" id="offer-deadline" class="apply-url-input" value="{{ offer.deadline if offer else '' }}">
+            <label class="field-label">Negotiation notes</label>
+            <textarea id="offer-notes" class="gen-instructions" rows="3" placeholder="Counter offers, leverage, notes…">{{ offer.notes if offer else '' }}</textarea>
+            <button class="btn btn-primary" onclick="saveOffer('{{ job.id }}')">Save Offer Details</button>
+          </div>
+        </div>
+        {% endif %}
+
+      </div>
+      {% endif %}
+
+      {% if latest_doc %}
+      <!-- Application Documents (version history + regenerate) -->
+      <div class="jd-card">
+        <h2>Application Documents</h2>
+        <div class="doc-versions">
+          {% for d in docs %}
+          <div class="doc-version-row">
+            <span>v{{ d.version }} — {{ d.generated_at[:16] }}
+              {% if d.is_final %}<span class="final-badge">Final</span>{% endif %}
+            </span>
+            <a href="{{ url_for('view_draft', job_id=job.id, doc_id=d.id) }}" class="btn-sm">
+              Edit / Download
+            </a>
+          </div>
+          {% endfor %}
+        </div>
+        <div class="gen-form">
+          <textarea id="gen-instructions" class="gen-instructions"
+                    placeholder="Optional instructions (e.g. 'emphasize the API platform work', 'keep to one page')…"
+                    rows="2"></textarea>
+          <button class="btn btn-primary" onclick="generateDocs('{{ job.id }}')" id="gen-btn">
+            ✨ Generate Resume + Cover Letter
+          </button>
+        </div>
+        <div class="gen-status hidden" id="gen-status"></div>
+      </div>
+      {% endif %}
+
+      <!-- Delete -->
+      <div class="danger-zone">
+        <button class="btn btn-danger" onclick="deleteJob('{{ job.id }}')">Remove from Board</button>
+      </div>
+    </div>
+
+    <!-- SIDEBAR -->
+    <div class="jd-col jd-side">
+      <div class="jd-card">
+        <h2>Progress</h2>
+        <div class="jd-timeline">
+          <div class="jd-tl-item jd-done">
+            <span class="jd-tl-dot"></span>
+            <div><div class="jd-tl-b">Added to board</div><div class="jd-tl-t">{{ job.saved_at[:10] if job.saved_at else '' }}</div></div>
+          </div>
+          <div class="jd-tl-item {{ 'jd-done' if fit else 'jd-pending' }}">
+            <span class="jd-tl-dot"></span>
+            <div>
+              <div class="jd-tl-b">{% if fit %}Fit analyzed · {{ "%g"|format(fit.match_score) }}/10{% else %}Fit analysis{% endif %}</div>
+              <div class="jd-tl-t">{{ fit.generated_at[:10] if fit else 'not run yet' }}</div>
+            </div>
+          </div>
+          <div class="jd-tl-item {{ 'jd-done' if docs else 'jd-pending' }}">
+            <span class="jd-tl-dot"></span>
+            <div><div class="jd-tl-b">Documents generated</div><div class="jd-tl-t">{{ docs[0].generated_at[:10] if docs else '—' }}</div></div>
+          </div>
+          {% set applied_done = job.status in ('Applied', 'Interviewing', 'Offer', 'Accepted') %}
+          <div class="jd-tl-item {{ 'jd-done' if applied_done else 'jd-pending' }}">
+            <span class="jd-tl-dot"></span>
+            <div>
+              <div class="jd-tl-b">Applied</div>
+              <div class="jd-tl-t">{{ job.status_changed_at[:10] if (applied_done and job.status_changed_at) else '— use “Mark Applied”' }}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="jd-card">
+        <h2>Notes</h2>
+        <div class="note-form">
+          <textarea id="note-input" rows="3" placeholder="Add a note…"></textarea>
+          <button class="btn btn-primary" onclick="addNote('{{ job.id }}')">Add Note</button>
+        </div>
+        <div class="notes-list" id="notes-list">
+          {% for note in notes %}
+          <div class="note-item">
+            <div class="note-time">{{ note.created_at[:16].replace('T',' ') }}</div>
+            <div class="note-body">{{ note.body }}</div>
+          </div>
+          {% else %}
+          <div class="empty-state" id="no-notes">No notes yet.</div>
+          {% endfor %}
+        </div>
+      </div>
     </div>
   </div>
 
@@ -296,6 +404,8 @@
 
 {% block scripts %}
 <script>
+const STATUS_COLORS = {{ status_colors | tojson }};
+
 function moveJob(jobId, status) {
   fetch(`/jobs/${jobId}/move`, {
     method:  "POST",
@@ -304,8 +414,25 @@ function moveJob(jobId, status) {
   })
   .then(r => r.json())
   .then(d => {
-    if (d.ok) showToast("Moved to " + status);
-    else      showToast("Error: " + d.error, true);
+    if (d.ok) {
+      showToast("Moved to " + status);
+      // Reflect the change on the page itself — no board trip required (req #4).
+      const pill = document.getElementById("jd-status-pill");
+      if (pill) {
+        pill.textContent = "";
+        const dot = document.createElement("span");
+        dot.className = "jd-dot";
+        pill.appendChild(dot);
+        pill.appendChild(document.createTextNode(status));
+        pill.style.background = STATUS_COLORS[status] || "#94a3b8";
+      }
+      const sel = document.getElementById("jd-status-select");
+      if (sel) sel.value = status;
+    } else {
+      showToast("Error: " + (d.error || "move failed") + (d.missing ? " (" + d.missing.join(", ") + ")" : ""), true);
+      const sel = document.getElementById("jd-status-select");
+      if (sel) sel.value = "{{ job.status }}";
+    }
   });
 }
 
@@ -591,7 +718,7 @@ function runFitAnalysis(jobId) {
   })
   .then(d => {
     btn.disabled = false;
-    btn.textContent = btn.id === "rerun-fit-btn" ? "Re-analyze" : "Analyze Fit";
+    btn.textContent = btn.id === "rerun-fit-btn" ? "↻ Re-analyze" : "Analyze Fit";
     if (d.ok) {
       showToast("Fit analysis complete! Reloading…");
       setTimeout(() => location.reload(), 1000);
@@ -602,7 +729,7 @@ function runFitAnalysis(jobId) {
   })
   .catch(err => {
     btn.disabled = false;
-    btn.textContent = btn.id === "rerun-fit-btn" ? "Re-analyze" : "Analyze Fit";
+    btn.textContent = btn.id === "rerun-fit-btn" ? "↻ Re-analyze" : "Analyze Fit";
     showToast("Analysis failed: " + err.message, true);
     if (status) status.textContent = "Error: " + err.message;
   });

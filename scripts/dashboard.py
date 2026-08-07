@@ -672,21 +672,17 @@ Description:
 
 Produce a fit analysis as a JSON object with these fields:
 
-1. "match_score": A number 1-10. Be honest — a 7 means strong match with minor gaps, a 5 means significant gaps.
+Keep everything SHORT and scannable. Prefer tight bullets over paragraphs. This is a quick decision aid, not an essay.
 
-2. "matches": A markdown list mapping each major JD requirement to specific experience from the work history. Format each as:
-   - **JD Requirement** — matching experience from specific role. Be specific with details.
-   Only include requirements where there IS a real match.
+1. "match_score": A number 1-10. Be honest — 7 = strong with minor gaps, 5 = a real stretch.
 
-3. "gaps": A markdown list of JD requirements the candidate does NOT directly match, with a mitigation strategy for each. Format:
-   - **Gap** — mitigation: how adjacent experience or transferable skills could address this.
-   If there are no gaps, say "No significant gaps identified."
+2. "matches": A markdown bullet list, strongest first, MAX 5 bullets. Each bullet is short: **2-4 word label** — a brief phrase, aim for under ~12 words. No stacked sentences, no long explanations. Real matches only.
 
-4. "stories": Pick 3-5 Signature Stories (STAR format) from the work history that are most relevant to THIS job's requirements. For each, write:
-   - **Story title** (from which role) — why it's relevant to this JD
-   Then reproduce the STAR story verbatim from the work history.
+3. "gaps": A markdown bullet list of what the candidate does NOT clearly match, MAX 4 bullets. Each: **gap** — one-line mitigation, under ~12 words. If none, say "No significant gaps identified."
 
-5. "summary": 2-3 sentence overall assessment. What's the strongest selling point? What's the biggest risk?
+4. "stories": 3-4 brief one-line pointers to the most relevant Signature Stories. Format each as: **Story title** (role) — why it fits, in a few words. Do NOT reproduce the full STAR text.
+
+5. "summary": ONE punchy sentence — the single strongest reason to apply. No hedging, no risk clause, under ~30 words.
 
 Return ONLY a valid JSON object with keys: match_score, matches, gaps, stories, summary.
 No markdown fences, no preamble."""

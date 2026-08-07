@@ -29,3 +29,9 @@ docs/*.md
 output/linkedin/
 # Personal interview prep — keep local only
 output/interview-prep/
+# Backup files (e.g. radar *.md.bak) — never commit
+*.bak
+# Codex tooling artifact
+.codex
+# Local security/audit docs — describe live vulnerabilities, keep private
+AUDIT-*.md

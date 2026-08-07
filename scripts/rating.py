@@ -3,13 +3,14 @@
 import json
 import os
 import re
+import shutil
+import subprocess
 import sys
 import threading
 import time
 from pathlib import Path
 from typing import Optional
 
-import anthropic
 from log import log
 from filters import _SALARY_CONTEXT_RE, _is_plausible_salary
 
@@ -22,14 +23,35 @@ TIER_ORDER = {"Apply Now": 0, "Worth a Look": 1, "Weak Match": 2, "Skip": 3}
 
 _print_lock = threading.Lock()
 
-_claude = None
+# Rate via the `claude` CLI over the Claude.ai (OAuth / Max subscription) login,
+# NOT the metered Anthropic API. Stripping ANTHROPIC_API_KEY forces the CLI onto
+# the subscription; leaving it set bills per-token credits (and dies when the
+# credit balance runs out). Mirrors the dashboard's generation path.
+_CLI_ENV = {k: v for k, v in os.environ.items() if k != "ANTHROPIC_API_KEY"}
+# cron runs with a minimal PATH (/usr/local/bin:/usr/bin) that excludes the npm
+# global bin where `claude` is installed, so add the usual user bin dirs.
+_USER_BINS = [str(Path.home() / ".npm-global/bin"), str(Path.home() / ".local/bin"),
+              "/usr/local/bin", "/usr/bin"]
+_CLI_ENV["PATH"] = os.pathsep.join(_USER_BINS + [_CLI_ENV.get("PATH", "")])
+_CLI_TIMEOUT = 120
+_CLI_MODEL = "claude-haiku-4-5-20251001"  # fast + cheap tier for high-volume rating
 
 
-def _get_claude():
-    global _claude
-    if _claude is None:
-        _claude = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY", ""))
-    return _claude
+def _resolve_claude() -> str:
+    """Absolute path to the `claude` CLI. shutil.which handles the interactive
+    case; the explicit fallbacks handle cron's minimal PATH."""
+    found = shutil.which("claude")
+    if found:
+        return found
+    home = Path.home()
+    for cand in (home / ".npm-global/bin/claude", home / ".local/bin/claude",
+                 Path("/usr/local/bin/claude"), Path("/usr/bin/claude")):
+        if cand.exists():
+            return str(cand)
+    return "claude"  # last resort; will raise a clear error if truly absent
+
+
+_CLAUDE_BIN = _resolve_claude()
 
 
 RATING_PROMPT = f"""\
@@ -102,13 +124,13 @@ def rate_with_claude(job) -> tuple[str, str, str]:
     max_retries = 4
     for attempt in range(max_retries):
         try:
-            response = _get_claude().messages.create(
-                model="claude-haiku-4-5-20251001",
-                max_tokens=400,
-                messages=[{"role": "user", "content": prompt}],
+            result = subprocess.run(
+                [_CLAUDE_BIN, "-p", prompt, "--model", _CLI_MODEL],
+                capture_output=True, text=True, timeout=_CLI_TIMEOUT, env=_CLI_ENV,
             )
-            raw = response.content[0].text.strip()
-            raw = raw.replace("```json", "").replace("```", "").strip()
+            if result.returncode != 0:
+                raise RuntimeError(result.stderr.strip()[:200] or "claude CLI nonzero exit")
+            raw = result.stdout.strip().replace("```json", "").replace("```", "").strip()
             match = re.search(r"\{.*\}", raw, re.DOTALL)
             if match:
                 data = json.loads(match.group())
@@ -119,11 +141,10 @@ def rate_with_claude(job) -> tuple[str, str, str]:
                 if raw_salary and not _is_plausible_salary(str(raw_salary)):
                     raw_salary = ""
                 return tier, data.get("reason", ""), raw_salary
-        except anthropic.RateLimitError:
-            wait = 15 * (2 ** attempt)
+        except subprocess.TimeoutExpired:
             with _print_lock:
-                log(f"Rate limit (attempt {attempt+1}/{max_retries}) — waiting {wait}s...", source="Rating")
-            time.sleep(wait)
+                log(f"Timeout (attempt {attempt+1}/{max_retries}) for '{job.title}'", source="Rating")
+            continue
         except Exception as e:
             with _print_lock:
                 log(f"Failed for '{job.title}': {e}", source="Rating")

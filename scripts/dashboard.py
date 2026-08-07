@@ -645,8 +645,11 @@ def _fit_score(value):
         return 0
 
 
-def generate_fit_analysis(job: dict) -> dict:
-    """Call Claude to produce a structured fit analysis for a job."""
+def generate_fit_analysis(job: dict, model: str = None) -> dict:
+    """Call Claude to produce a structured fit analysis for a job.
+
+    Pass `model` (e.g. a Haiku alias) to run the analysis on a cheaper/faster
+    model — useful for bulk re-analysis. Defaults to the CLI's default model."""
     personal = _read_doc("personal-info.md")
     skills   = _read_doc("technical-skills.md")
     history_parts = [_read_doc(f) for f in JOB_DOCS]
@@ -684,11 +687,16 @@ Keep everything SHORT and scannable. Prefer tight bullets over paragraphs. This 
 
 5. "summary": ONE punchy sentence — the single strongest reason to apply. No hedging, no risk clause, under ~30 words.
 
+IMPORTANT: Even if the job description is short, truncated, or incomplete, you MUST still return the JSON. Work from whatever information is available and keep it brief. Never refuse, never ask for the full posting, never return anything other than the JSON object.
+
 Return ONLY a valid JSON object with keys: match_score, matches, gaps, stories, summary.
 No markdown fences, no preamble."""
 
+    _cmd = ["claude", "-p", prompt]
+    if model:
+        _cmd += ["--model", model]
     result = subprocess.run(
-        ["claude", "-p", prompt],
+        _cmd,
         capture_output=True, text=True, timeout=_CLI_TIMEOUT, env=_CLI_ENV,
     )
     if result.returncode != 0:

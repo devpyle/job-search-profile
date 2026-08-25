@@ -14,6 +14,7 @@ import html
 import json
 import os
 import re
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -57,16 +58,51 @@ INTERVIEW_PREP_DIR = REPO_ROOT / "output" / "interview-prep"
 
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 
+# Absolute path to the `claude` CLI. Relying on bare "claude" breaks under the
+# systemd user service, whose minimal PATH (/usr/local/bin:/usr/bin:...) omits
+# ~/.npm-global/bin where npm installs it — every background pipeline then died
+# with "[Errno 2] No such file or directory: 'claude'" and left cards unscored
+# in Drafting. Resolve it once, with explicit fallbacks, so the UI-triggered
+# pipeline works the same as a shell run.
+def _resolve_claude_bin() -> str:
+    found = shutil.which("claude")
+    if found:
+        return found
+    for cand in (
+        os.path.expanduser("~/.npm-global/bin/claude"),
+        os.path.expanduser("~/.local/bin/claude"),
+        "/usr/local/bin/claude",
+        "/usr/bin/claude",
+    ):
+        if os.path.exists(cand):
+            return cand
+    return "claude"  # last resort; fails loudly rather than silently
+
+
+_CLAUDE_BIN = _resolve_claude_bin()
+
 # Env for the `claude` CLI: strip ANTHROPIC_API_KEY so the CLI uses the
 # Claude.ai (OAuth / Max subscription) login instead of billing API credits.
 # Leaving the key set both bills per-token credits and triggers the
 # "connectors are disabled" error that breaks `claude -p`.
 _CLI_ENV = {k: v for k, v in os.environ.items() if k != "ANTHROPIC_API_KEY"}
+# Put the claude binary's own directory on PATH too, so its node runtime and any
+# child processes resolve even under systemd's minimal PATH.
+_claude_dir = os.path.dirname(_CLAUDE_BIN)
+if _claude_dir and _claude_dir not in _CLI_ENV.get("PATH", "").split(os.pathsep):
+    _CLI_ENV["PATH"] = _claude_dir + os.pathsep + _CLI_ENV.get("PATH", "")
 
 # Seconds to wait on a `claude -p` generation before giving up. Richer job
 # descriptions push generation past the old 120s ceiling, silently failing a
 # doc; 300s gives comfortable headroom.
 _CLI_TIMEOUT = 300
+
+# Default model for resume/cover-letter generation. A 2026-08-17 head-to-head
+# found Sonnet respects the grounding rules far better than Haiku (Haiku still
+# injected ungrounded skills like "Azure DevOps"/"PQ testing" and invented grad
+# dates; Sonnet did not) and tailors more sharply. Fit SCORING stays cheap
+# elsewhere; document GENERATION defaults to Sonnet. Override via env if needed.
+_GEN_DOC_MODEL = os.environ.get("GEN_DOC_MODEL", "claude-sonnet-5")
 
 # ── PERSONAL CONFIG (from config.py) ──────────────────────────────────────────
 sys.path.insert(0, str(REPO_ROOT))
@@ -462,7 +498,7 @@ def ensure_job_description(db, job: dict) -> dict:
     return job
 
 
-def generate_documents(job: dict, instructions: str = "", fit: Optional[dict] = None) -> dict:
+def generate_documents(job: dict, instructions: str = "", fit: Optional[dict] = None, model: str = None) -> dict:
     """Call Claude to generate resume + cover letter markdown.
 
     If a fit analysis is supplied, its gaps and summary are injected so the
@@ -523,6 +559,7 @@ RESUME GENERATION RULES (follow all exactly):
 {rules}
 
 ADDITIONAL RULES (these override the rules above where they conflict):
+- Rule 0 above (the "Fit Assessment First: assess, then stop and wait for confirmation" step) does NOT apply to this call. The decision to generate has already been made. Produce the resume and cover letter now; never return a fit assessment, a question, or a refusal.
 - Output format: clean Markdown — NOT HTML. The output will be converted to DOCX.
 - Jobs MUST be listed in strict chronological order, newest to oldest.
 - For each job, curate only the most relevant achievements for THIS specific role. Do not dump all bullets — select and tailor.
@@ -534,6 +571,9 @@ ADDITIONAL RULES (these override the rules above where they conflict):
 - Respond ONLY with a valid JSON object — no preamble, no explanation, no markdown fences.
 - JSON format: {{"resume": "...", "cover_letter": "..."}}
 - Do NOT use **bold** or any other inline emphasis inside bullet points or the summary. Plain text only for all bullets and the summary paragraph. Bold in bullets looks like AI wrote it.
+- Do NOT use em dashes (the "—" character) anywhere in the resume or cover letter. Use commas, periods, or hyphens instead.
+- Use ONLY dates, graduation years, durations, and metrics that appear in the provided EDUCATION and WORK HISTORY. Never invent or infer a year or number that is not written there.
+- Do NOT use "Scrum Master" as a job title or list it as a skill. Represent the Broadridge role as "Product Owner" (or "Product Owner / Systems Analyst" when the JD targets a systems analyst). "Agile" is fine as a methodology; the standalone Scrum Master role is fading and reads as dated.
 - Use - for bullet points.
 - Company name and dates go on the line directly below the ### Job Title line, formatted as: **Company Name** | Location | Start – End
 - Skills section: group skills into 4-6 labeled categories, ONE category per line, formatted as: **Category:** skill, skill, skill (for example **API & Integration:** REST, GraphQL, Swagger, Azure APIM). Do not output skills as one long comma list. Tailor the category labels and contents to the target role.
@@ -556,7 +596,7 @@ ACCURACY GUARDRAILS — ENFORCE BEFORE WRITING:
 Broader AI work (building LLM products, prompt engineering, shipping AI agents) belongs exclusively in the Selected Projects section. Keep it there. Never blend day-job and side-project AI experience into a unified claim or summary line.
 
 TOOL AND SKILL ACCURACY:
-Name only tools, platforms, methodologies, and certifications that appear in the candidate's documented technical skills or work history. If the JD lists a tool the candidate does not have, omit it — do not add it. If he has a genuine equivalent, name his real one instead. Never list a tool solely because the JD requests it.
+Name only tools, platforms, methodologies, and certifications that appear in the candidate's documented technical skills or work history. Every entry in the Skills section must trace to the provided TECHNICAL SKILLS or WORK HISTORY. If the JD lists a tool the candidate does not have, omit it — do not add it. If he has a genuine equivalent, name his real one instead. Never list a tool solely because the JD requests it. Concretely: do NOT add "SAFe", "Azure DevOps", "Kanban", "PQ testing", or any other framework or tool that is not in the provided docs, even if the posting emphasizes it.
 
 TAILORING DISCIPLINE:
 Lead with the candidate's true professional identity and real achievements as the backbone. Tailor by selecting which real experiences to foreground and lightly rephrasing toward the JD's vocabulary. Do not invent a new persona per role. Do not bury his core identity to chase JD keywords. Do not contort the whole narrative to mirror the posting. An over-tailored resume that reads as a different person for every job is a failure.
@@ -594,10 +634,14 @@ Location: {job.get('location', '')}
 Description:
 {job.get('description', '(no description provided)')}
 
+FINAL VERIFICATION (do this silently before returning):
+Re-read every bullet and every skill you wrote. For each, identify the specific fact in the WORK HISTORY or TECHNICAL SKILLS above that it traces to; if you cannot, delete it. Then confirm each of these and fix anything that fails: no banned filler words; no em dashes; no bold or inline emphasis in bullets or the summary; no tool or skill absent from the docs; no date, duration, or metric not written in the docs; roles in strict reverse-chronological order; within 2 pages. Only after this pass, output the JSON.
+
 Generate the resume and cover letter. Return ONLY the JSON object."""
 
+    _cmd = [_CLAUDE_BIN, "-p", prompt, "--model", model or _GEN_DOC_MODEL]
     result = subprocess.run(
-        ["claude", "-p", prompt],
+        _cmd,
         capture_output=True, text=True, timeout=_CLI_TIMEOUT, env=_CLI_ENV,
     )
     if result.returncode != 0:
@@ -692,7 +736,7 @@ IMPORTANT: Even if the job description is short, truncated, or incomplete, you M
 Return ONLY a valid JSON object with keys: match_score, matches, gaps, stories, summary.
 No markdown fences, no preamble."""
 
-    _cmd = ["claude", "-p", prompt]
+    _cmd = [_CLAUDE_BIN, "-p", prompt]
     if model:
         _cmd += ["--model", model]
     result = subprocess.run(
@@ -1314,6 +1358,12 @@ def board():
                 or f"Fit score {fit_score}/10 — below the {FIT_CUTOFF} threshold."
             )
         jobs_by_status[status].append(job)
+
+    # Ready column: lead with best fit, then most recent (fit desc, then date desc).
+    jobs_by_status["Ready"].sort(
+        key=lambda j: (j.get("fit_score") or 0, j.get("saved_at") or ""),
+        reverse=True,
+    )
 
     return render_template(
         "board.html",

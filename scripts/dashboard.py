@@ -107,7 +107,7 @@ _GEN_DOC_MODEL = os.environ.get("GEN_DOC_MODEL", "claude-sonnet-5")
 # ── PERSONAL CONFIG (from config.py) ──────────────────────────────────────────
 sys.path.insert(0, str(REPO_ROOT))
 from config import (CANDIDATE_NAME, JOB_DOCS, HOME_METRO_TERMS, HOME_CITY,  # noqa: E402
-                    GENERATION_GUARDRAILS)
+                    GENERATION_GUARDRAILS, CANDIDATE_BACKGROUND)
 
 try:  # bare import at runtime and under pytest's prepend path; package fallback
     from rag import retrieve_relevant as rag_retrieve  # noqa: E402
@@ -716,6 +716,19 @@ Company:  {job.get('company', '')}
 Location: {job.get('location', '')}
 Description:
 {job.get('description', '(no description provided)')}
+
+TARGETING CONTEXT (how to score, not resume content):
+{CANDIDATE_BACKGROUND}
+
+David is intentionally pursuing this wider set of roles — Product Owner/Manager,
+Business/Functional/Systems Analyst, Technical Program/Project Manager, Solutions/
+Sales Engineer & Pre-Sales, Implementation/Onboarding Consultant, Technical Account
+Manager, Integration Manager, Developer Experience/API Product, and fintech/banking
+consulting. For roles in these families, score TRANSFERABLE fit fairly: credit his
+API/integration, middleware, and regulated-fintech depth toward the role — do not
+mark a role down solely because the title isn't "Product Owner." Still score
+honestly: real skill or domain gaps, or roles well outside this set, should score
+low. A weak fit is still a weak fit — do not inflate.
 
 Produce a fit analysis as a JSON object with these fields:
 

@@ -28,8 +28,17 @@ REPO_ROOT = Path(__file__).parent.parent
 OUTPUT_DIR = REPO_ROOT / "output" / "job-radar"
 DEBUG_LOG_FILE = OUTPUT_DIR / "debug_job_log.txt"
 
-GMAIL_APP_PW = os.environ.get("GMAIL_APP_PW", "")
-EMAIL = os.environ.get("GMAIL_TO", os.environ.get("GMAIL_FROM", ""))
+# Credentials: prefer env vars (GMAIL_APP_PW / GMAIL_TO / GMAIL_FROM), but fall
+# back to config.py (GMAIL_APP_PASSWORD / GMAIL_ADDRESS) so the email step works
+# under cron, where those env vars are not set. App passwords are shown by Google
+# with spaces ("xxxx xxxx xxxx xxxx"); strip them, matching the inbox scanner.
+try:
+    from config import GMAIL_ADDRESS as _CFG_EMAIL, GMAIL_APP_PASSWORD as _CFG_APP_PW
+except Exception:  # noqa: BLE001 - config may not define them
+    _CFG_EMAIL, _CFG_APP_PW = "", ""
+
+GMAIL_APP_PW = (os.environ.get("GMAIL_APP_PW", "") or _CFG_APP_PW).replace(" ", "")
+EMAIL = (os.environ.get("GMAIL_TO", os.environ.get("GMAIL_FROM", "")) or _CFG_EMAIL)
 
 
 def write_debug_log(jobs: list[Job], raw_counts: dict):

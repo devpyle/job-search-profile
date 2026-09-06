@@ -103,6 +103,27 @@ NEGATIVE = [
     "nurse", "cna", "caregiver", "security guard", "temp agency", "staffing",
 ]
 
+# Company-name substrings that are never a consulting target: staffing/recruiting
+# agencies (they're intermediaries, not the end business) and large enterprises that
+# recur in the feeds. Matched against the company name only.
+COMPANY_BLOCK = [
+    # staffing / recruiting agencies
+    "robert half", "accountemps", "insight global", "gpac", "aerotek", "randstad",
+    "adecco", "teksystems", "kelly services", "manpower", "kforce", "addison group",
+    "creative financial staffing", "cfs", "vaco", "beacon hill", "express employment",
+    "spherion", "ledgent", "roth staffing", "ultimate staffing", "michael page",
+    "robert walters", "lucas group", "hays", "integrity staffing", "trueblue",
+    "staffmark", "nesco", "onward search", "motion recruitment", "jobot", "snelling",
+    "apex systems", "apex focus group", "the judge group", "system one", "collabera",
+    "recruit", "staffing", "talent", "personnel",
+    # large enterprises that keep surfacing (not SMBs)
+    "martin marietta", "pella", "centerwell", "humana", "gallagher", "leidos",
+    "rent a center", "wells fargo", "bank of america", "truist", "lowe's", "honeywell",
+    "siemens", "deloitte", "pwc", "kpmg", "ernst", "accenture", "cognizant", "infosys",
+    "wipro", "cvs health", "walgreens", "unitedhealth", "optum", "novant", "atrium health",
+    "wake county", "allen harim",
+]
+
 # Automatable signal -> role is heavy on moving structured data / scheduling / documents.
 POSITIVE = [
     "data entry", "data-entry", "spreadsheet", "excel", "quickbooks", "reconcile",
@@ -278,7 +299,10 @@ def kw_score(post: dict) -> int:
 
 def is_negative(post: dict) -> bool:
     blob = f"{post['title']} {post['company']} {post['category']}".lower()
-    return any(n in blob for n in NEGATIVE)
+    if any(n in blob for n in NEGATIVE):
+        return True
+    company = (post.get("company") or "").lower()
+    return any(b in company for b in COMPANY_BLOCK)
 
 
 def in_bbox(lat, lon, box) -> bool | None:
@@ -296,7 +320,10 @@ digital, rules-based work (moving data between systems, scheduling/dispatch, inv
 order entry, records, document processing) -- that work can often be automated for a one-time \
 build plus a small retainer instead of a ~$35-45K/yr hire. BAD leads: staffing/temp agencies, \
 research studies, survey/gig/data-labeling platforms, commission sales, physical-labor roles, \
-or large enterprises.
+or large enterprises. If the company is a recognizable staffing/recruiting firm (e.g. Robert \
+Half, Insight Global, Gpac, Aerotek, Randstad, Vaco) or a large national/public company, set \
+real_smb=false regardless of how automatable the tasks are -- you can't sell a custom \
+automation to a staffing agency's placement or to a Fortune-1000's back office this way.
 
 Job post:
   Title:    {title}

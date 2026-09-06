@@ -29,6 +29,8 @@ docs/*.md
 output/linkedin/
 # Personal interview prep — keep local only
 output/interview-prep/
+# Automation-lead sheets — scraped business contacts + outreach drafts, keep private
+output/automation-leads/
 # Backup files (e.g. radar *.md.bak) — never commit
 *.bak
 # Codex tooling artifact

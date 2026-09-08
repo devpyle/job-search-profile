@@ -141,7 +141,10 @@ _PHONE_RE = re.compile(r"(?<!\d)(?:\+?1[.\-\s]?)?\(?\d{3}\)?[.\-\s]?\d{3}[.\-\s]
 _EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 
 # ----------------------------------------------------------------------------- claude
-_CLI_ENV = dict(os.environ)
+# Strip ANTHROPIC_API_KEY so `claude -p` uses the Max subscription (OAuth), NOT the
+# metered API. load_dotenv above pulls the key into os.environ; without this the CLI
+# would bill the API key. Mirrors scripts/dashboard.py and scripts/rating.py.
+_CLI_ENV = {k: v for k, v in os.environ.items() if k != "ANTHROPIC_API_KEY"}
 _CLI_ENV["PATH"] = os.pathsep.join(
     [str(Path.home() / ".npm-global/bin"), str(Path.home() / ".local/bin"),
      _CLI_ENV.get("PATH", "")])

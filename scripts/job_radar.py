@@ -58,7 +58,9 @@ validate(
         "ADZUNA_APP_ID": "Adzuna job search",
         "ADZUNA_APP_KEY": "Adzuna job search",
         "TAVILY_API_KEY": "Tavily web search",
-        "ANTHROPIC_API_KEY": "Claude AI job rating",
+        # ANTHROPIC_API_KEY intentionally NOT required: rating.py rates via the
+        # `claude -p` CLI on the Max subscription and strips this key. Requiring it
+        # here was stale and would block startup once the key is removed from .env.
     },
     env_optional={
         "BRAVE_API_KEY": "Brave web search (skipped if absent)",

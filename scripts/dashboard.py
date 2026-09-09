@@ -121,11 +121,14 @@ import db as data  # noqa: E402
 STATUSES = [
     "Reviewing", "Drafting", "Ready",
     "Applied", "Interviewing", "Offer",
-    "Accepted", "Rejected", "Passed",
+    "Accepted", "Rejected", "Passed", "Closed",
 ]
 APP_STATUSES       = ["Reviewing", "Drafting", "Ready", "Applied"]
 INTERVIEW_STATUSES = ["Interviewing", "Offer"]
-END_STATUSES       = ["Accepted", "Rejected", "Passed"]
+# "Closed" = the posting is no longer accepting applications (expired/filled/
+# removed). Distinct from Passed (candidate opted out) and Rejected (employer
+# said no) — and it does NOT feed the company reject-signal (see move_job).
+END_STATUSES       = ["Accepted", "Rejected", "Passed", "Closed"]
 ACTIVE_STATUSES    = APP_STATUSES  # kept for any legacy references
 
 # Fit analyses score 1-10. Below this cutoff a card is treated as a weak fit:
@@ -148,6 +151,7 @@ STATUS_COLORS = {
     "Accepted":     "#22c55e",
     "Rejected":     "#ef4444",
     "Passed":       "#6b7280",
+    "Closed":       "#57534e",
 }
 
 # ── FLASK APP ─────────────────────────────────────────────────────────────────

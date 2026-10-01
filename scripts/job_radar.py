@@ -18,6 +18,11 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from dotenv import load_dotenv
+
+# Load .env before importing the source modules: they read their API keys
+# into module-level constants at import time.
+load_dotenv()
+
 from log import log, init as log_init
 from models import Job, _TITLE_CLEANUP_RE  # noqa: F401
 from normalize import _clean_desc, format_salary_text, matches_keywords  # noqa: F401
@@ -49,8 +54,6 @@ from sources.ats import search_ats_companies  # noqa: F401
 from sources.ukg import search_ukg  # noqa: F401
 from report import build_report, write_debug_log, send_email  # noqa: F401
 from startup import validate
-
-load_dotenv()
 
 # ── STARTUP VALIDATION ────────────────────────────────────────────────────────
 validate(

@@ -513,6 +513,7 @@ def generate_documents(job: dict, instructions: str = "", fit: Optional[dict] = 
     skills   = _read_doc("technical-skills.md")
     edu      = _read_doc("education.md")
     projects = _read_doc("side-projects.md")
+    ai_skills = _read_doc("ai-skills.md")
 
     history_parts = [_read_doc(f) for f in JOB_DOCS]
     history = "\n\n---\n\n".join(p for p in history_parts if p)
@@ -569,8 +570,9 @@ ADDITIONAL RULES (these override the rules above where they conflict):
 - For each job, curate only the most relevant achievements for THIS specific role. Do not dump all bullets — select and tailor.
 - LENGTH: target 2 pages, 3 pages absolute maximum. Never produce 4 pages. Be ruthless. Bullets per role: 4-5 for the current/most recent role, 3-4 for mid-career roles, and only 2 for roles older than ~8 years. Keep the summary to 3-4 lines. Selected Projects: at most 2 projects, 1 bullet each. When in doubt, cut the least relevant content rather than keep it.
 - BULLET LENGTH: keep every bullet CONCISE — one line, two lines maximum. Lead with the outcome or action, then drop filler clauses ("in order to", "responsible for", long trailing descriptions). A bullet that wraps to three lines is too long; tighten it.
-- Resume structure: # Name / contact line / ## Summary / ## Experience / ### Job Title sections / ## Education / ## Skills / ## Selected Projects (when relevant, see below). This order is deliberate and ATS-critical: ## Education must come IMMEDIATELY after ## Experience. Workday and similar resume parsers use the Education heading as a hard boundary that stops the last job's description from swallowing whatever follows it; placing Projects (which have no company/dates) right after Experience makes the parser dump project text into the final job box and misalign every role's description. Never put Selected Projects between Experience and Education.
-- Selected Projects section: place it LAST, AFTER ## Skills, and include a ## Selected Projects section IF the target role values hands-on AI, technical depth, data/ML, or a builder profile. Use the same format as jobs: ### Project Name, then a line formatted as **Type / tech** | link-or-status, then 1-2 tailored bullets. Pull ONLY from the SELECTED PROJECTS provided below. Tailor which projects appear to the role. For the Polymarket project, the codebase is private — mention it and its outcomes but never imply the source is public. Omit this whole section for pure process/BA roles where it adds nothing.
+- Resume structure: # Name / contact line / ## Summary / ## Experience / ### Job Title sections / ## Education / ## Skills / ## Selected Projects (always, see below). This order is deliberate and ATS-critical: ## Education must come IMMEDIATELY after ## Experience. Workday and similar resume parsers use the Education heading as a hard boundary that stops the last job's description from swallowing whatever follows it; placing Projects (which have no company/dates) right after Experience makes the parser dump project text into the final job box and misalign every role's description. Never put Selected Projects between Experience and Education.
+- AI IN EVERY RESUME: hands-on AI work shows the candidate keeps current, so every resume includes it, even when the job description never mentions AI. Two required pieces: (1) a Skills line covering the candidate's real AI tooling and techniques, drawn only from the AI skills and projects provided below; (2) the ## Selected Projects section. Scale emphasis to the role: for AI, technical, data, or builder roles, up to 2 projects and AI can appear in the summary; for process, BA, or domain-heavy roles, 1 project and a light touch (no AI-heavy summary). Every AI claim must stay inside the candidate's documented scope and guardrails: side-project AI is side-project work, never presented as day-job work.
+- Selected Projects section: place it LAST, AFTER ## Skills. Always include it (see AI IN EVERY RESUME). Use the same format as jobs: ### Project Name, then a line formatted as **Type / tech** | link-or-status, then 1-2 tailored bullets. Pull ONLY from the SELECTED PROJECTS provided below. Pick the project(s) closest to the target role. For the Polymarket project, the codebase is private — mention it and its outcomes but never imply the source is public.
 - Cover letter: plain paragraphs only — date, greeting, 3-4 body paragraphs, sign-off. No markdown headers.
 - Respond ONLY with a valid JSON object — no preamble, no explanation, no markdown fences.
 - JSON format: {{"resume": "...", "cover_letter": "..."}}
@@ -624,7 +626,10 @@ EDUCATION:
 TECHNICAL SKILLS:
 {skills}
 
-SELECTED PROJECTS (self-built side projects — use for a tailored ## Selected Projects section when the role values AI, ML, technical depth, or a builder profile):
+AI SKILLS (source for the required AI line in ## Skills; respect its scope notes):
+{ai_skills}
+
+SELECTED PROJECTS (self-built side projects — source for the required ## Selected Projects section):
 {projects}
 {relevant_block}
 

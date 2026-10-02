@@ -655,7 +655,9 @@ Generate the resume and cover letter. Return ONLY the JSON object."""
     raw   = raw.replace("```json", "").replace("```", "").strip()
     match = re.search(r"\{.*\}", raw, re.DOTALL)
     if match:
-        data = json.loads(match.group())
+        # strict=False: the model sometimes emits raw newlines inside the
+        # long resume/cover-letter strings, which strict JSON rejects.
+        data = json.loads(match.group(), strict=False)
         return {
             "resume":       data.get("resume", ""),
             "cover_letter": data.get("cover_letter", ""),
@@ -767,7 +769,7 @@ No markdown fences, no preamble."""
     raw   = raw.replace("```json", "").replace("```", "").strip()
     match = re.search(r"\{.*\}", raw, re.DOTALL)
     if match:
-        data = json.loads(match.group())
+        data = json.loads(match.group(), strict=False)
         return {
             "match_score": _fit_score(data.get("match_score", 0)),
             "matches":     _fit_text(data.get("matches", "")),

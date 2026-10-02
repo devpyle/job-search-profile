@@ -37,7 +37,32 @@ CATEGORY_URL_FRAGMENTS = [
     "totaljobs.com", "reed.co.uk", "cv-library.co.uk", "jobs.ac.uk", "jobsite.co.uk",
     "wuaze.com", "wixsite.com", "weebly.com", "wordpress.com",
     "blogspot.com", "sites.google.com",
+    # Repost/scraper sites surfaced by web search: truncated titles, stale or
+    # non-US reposts of listings we already get from the source ATS.
+    "remoteanywherejob.com", "dreamworkhq.com", "kickstartremote.com",
+    "liveblog365.com", "dedyn.io", "placeman.co.in", "remotegoldcareers.com",
+    "hnhiring.com", "cryptojobs.com", "remoteitjobs.app",
 ]
+
+# A title that names a role contains one of these. Web-search results whose
+# title has none ("Modulr: Careers", "Where jobs find you") aren't postings.
+ROLE_NOUN_RE = re.compile(
+    r"\b(manager|owner|analyst|engineer|lead|director|specialist|consultant|"
+    r"architect|master|administrator|associate|strategist|designer|developer|"
+    r"scientist|officer|coordinator|advisor|head|vp|president|pm|tpm|po|bsa)\b",
+    re.IGNORECASE,
+)
+
+# URL shapes of search/listing pages rather than a single posting.
+_LISTING_URL_RE = re.compile(
+    r"/searchjobs\b|/search-jobs\b|/job-search\b|/jobs/?(\?|$)|/careers/?(\?|$)"
+    r"|/global/[a-z]{2}/c/|/locations/"
+    r"|greenhouse\.io/[^/?#]+/?(\?|#|$)"          # board root, no /jobs/<id>
+    r"|lever\.co/[^/?#]+/?(\?|#|$)"
+    r"|ashbyhq\.com/[^/?#]+/?(\?|#|$)"
+    r"|^https?://[^/]+/?(\?|#|$)",                 # bare homepage
+    re.IGNORECASE,
+)
 
 NON_JOB_TITLE_RE = re.compile(
     r"resume (samples?|templates?|examples?|guide)|"
@@ -258,6 +283,14 @@ def is_category_page(title: str, url: str, description: str = "") -> bool:
     return False
 
 
+def is_non_role_web_result(title: str, url: str) -> bool:
+    """Web-search hit (Brave/Tavily) that isn't a single job posting:
+    a listing/search URL, or a page title that names no role."""
+    if url and _LISTING_URL_RE.search(url):
+        return True
+    return not ROLE_NOUN_RE.search(title or "")
+
+
 def is_non_us_location(job) -> bool:
     if _NON_US_RE.search(job.location):
         return True
@@ -459,6 +492,7 @@ def is_stale(posted: str, max_age_days: int = STALE_POST_DAYS) -> bool:
 
 SKIP_REASONS: dict[str, str] = {
     "category_page":      "Category/listings page, not an actual job posting",
+    "not_a_role":         "Web search result that isn't a single job posting (careers or listing page)",
     "virtualvocations":   "VirtualVocations aggregator listing, not a real posting",
     "blocked_company":    "Company is on the blocked list",
     "wrong_title":        "Title indicates wrong function or level (e.g. sales, design, support)",

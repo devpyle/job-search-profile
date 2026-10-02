@@ -4,6 +4,7 @@ import os
 import re
 import sys
 from pathlib import Path
+from urllib.parse import urlparse
 
 import requests
 
@@ -14,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from models import Job  # noqa: E402
 from normalize import _clean_desc  # noqa: E402
 from log import log  # noqa: E402
+from sources.web_results import normalize_web_job  # noqa: E402
 
 TAVILY_API_KEY = os.environ.get("TAVILY_API_KEY", "")
 
@@ -72,15 +74,23 @@ def _company_from_url(url: str) -> str:
     if not url:
         return ""
     url_lower = url.lower()
-    wd = re.match(r"https?://([^.]+)\.myworkdayjobs\.com", url_lower)
+    # Workday hosts look like <tenant>.wd5.myworkdayjobs.com; the tenant is
+    # the employer (falling through to the map would match "workday" itself).
+    wd = re.match(r"https?://([^.]+)\.(?:wd\d+\.)?myworkdayjobs\.com", url_lower)
     if wd:
         slug = wd.group(1)
         for key, name in DOMAIN_COMPANY_MAP.items():
             if key in slug:
                 return name
         return slug.replace("-", " ").title()
+    host = urlparse(url_lower).netloc
     for key, name in DOMAIN_COMPANY_MAP.items():
-        if key in url_lower:
+        # Keys with a dot are domains: match on a label boundary so
+        # "ice.com" doesn't match "dice.com". Bare keys match anywhere in host.
+        if "." in key:
+            if host == key or host.endswith("." + key):
+                return name
+        elif key in host:
             return name
     return ""
 
@@ -97,16 +107,14 @@ def search_tavily() -> list[Job]:
             )
             r.raise_for_status()
             for item in r.json().get("results", []):
-                url     = item.get("url", "")
-                title   = item.get("title", "")
-                company = _company_from_url(url)
-                jobs.append(Job(
-                    title=title,
+                job = Job(
+                    title=item.get("title", ""),
                     description=_clean_desc(item.get("content", "")),
-                    url=url,
-                    company=company,
+                    url=item.get("url", ""),
                     source="Tavily",
-                ))
+                )
+                if normalize_web_job(job, _company_from_url):
+                    jobs.append(job)
         except Exception as e:
             log(f"Query failed ({q[:50]}): {e}", source="Tavily")
     return jobs

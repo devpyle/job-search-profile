@@ -19,9 +19,12 @@ from filters import (  # noqa: E402
     BLOCKED_COMPANIES, is_category_page, is_non_us_location,
     is_onsite_non_local, is_bad_scrape, is_local_raleigh, is_staffing,
     is_below_salary_floor, is_closed_listing, is_wrong_title, is_broken_url,
-    is_stale,
+    is_stale, is_non_role_web_result,
 )
 from rating import TIER_ORDER, rate_with_claude, _print_lock  # noqa: E402
+
+# Sources that return web pages rather than structured postings.
+WEB_SEARCH_SOURCES = {"Brave", "Tavily"}
 from sources.linkedin import li_enrich_descriptions  # noqa: E402
 
 REPO_ROOT = Path(__file__).parent.parent
@@ -108,6 +111,9 @@ def build_report(jobs: list[Job], seen: dict, now: datetime,
             continue  # dedup — don't log
         if is_category_page(job.title, job.url, job.description):
             _reject(job, "category_page")
+            continue
+        if job.source in WEB_SEARCH_SOURCES and is_non_role_web_result(job.title, job.url):
+            _reject(job, "not_a_role")
             continue
         if job.url and "virtualvocations.com" in job.url.lower():
             _reject(job, "virtualvocations")

@@ -14,6 +14,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from models import Job  # noqa: E402
 from normalize import _clean_desc  # noqa: E402
 from log import log  # noqa: E402
+from sources.tavily import _company_from_url  # noqa: E402
+from sources.web_results import normalize_web_job  # noqa: E402
 
 BRAVE_API_KEY = os.environ.get("BRAVE_API_KEY", "")
 
@@ -32,12 +34,14 @@ def search_brave() -> list[Job]:
             )
             r.raise_for_status()
             for item in r.json().get("web", {}).get("results", []):
-                jobs.append(Job(
+                job = Job(
                     title=item.get("title", ""),
                     description=_clean_desc(item.get("description", "")),
                     url=item.get("url", ""),
                     source="Brave",
-                ))
+                )
+                if normalize_web_job(job, _company_from_url):
+                    jobs.append(job)
         except Exception as e:
             log(f"Query failed ({q[:50]}): {e}", source="Brave")
     return jobs

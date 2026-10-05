@@ -4,6 +4,11 @@ from unittest.mock import patch, MagicMock
 
 import tests.conftest  # noqa: F401
 
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
+
 from filters import is_non_role_web_result
 from models import Job
 from sources.tavily import _company_from_url

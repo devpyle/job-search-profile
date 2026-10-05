@@ -35,12 +35,14 @@ import json
 import os
 import re
 import shutil
-import subprocess
 import sys
 import time
 import urllib.parse
 import urllib.request
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent))
+from claude_cli import run_cli  # noqa: E402
 
 REPO = Path(__file__).resolve().parent.parent
 OUT_DIR = REPO / "output" / "automation-leads"
@@ -353,7 +355,7 @@ def claude_score(post: dict, timeout: int = 120) -> dict | None:
         company=post["company"] or "(none)", pay=post["pay"] or "(not listed)",
         addr=post.get("addr") or "(none)", body=(post.get("body") or "")[:1800])
     try:
-        r = subprocess.run([_CLAUDE_BIN, "-p", prompt, "--model", _CLI_MODEL],
+        r = run_cli([_CLAUDE_BIN, "-p", prompt, "--model", _CLI_MODEL],
                            capture_output=True, text=True, env=_CLI_ENV, timeout=timeout)
         if r.returncode != 0:
             return None

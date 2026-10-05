@@ -16,7 +16,6 @@ import os
 import re
 import shutil
 import sqlite3
-import subprocess
 import sys
 import threading
 from datetime import datetime
@@ -115,6 +114,7 @@ except ImportError:  # pragma: no cover
     from scripts.rag import retrieve_relevant as rag_retrieve  # noqa: E402
 from portal_scanner import scan_all as portal_scan_all  # noqa: E402
 import db as data  # noqa: E402
+from claude_cli import run_cli  # noqa: E402
 
 # ── KANBAN COLUMNS ────────────────────────────────────────────────────────────
 
@@ -649,7 +649,7 @@ Re-read every bullet and every skill you wrote. For each, identify the specific 
 Generate the resume and cover letter. Return ONLY the JSON object."""
 
     _cmd = [_CLAUDE_BIN, "-p", prompt, "--model", model or _GEN_DOC_MODEL]
-    result = subprocess.run(
+    result = run_cli(
         _cmd,
         capture_output=True, text=True, timeout=_CLI_TIMEOUT, env=_CLI_ENV,
     )
@@ -763,7 +763,7 @@ No markdown fences, no preamble."""
     _cmd = [_CLAUDE_BIN, "-p", prompt]
     if model:
         _cmd += ["--model", model]
-    result = subprocess.run(
+    result = run_cli(
         _cmd,
         capture_output=True, text=True, timeout=_CLI_TIMEOUT, env=_CLI_ENV,
     )

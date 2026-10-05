@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Optional
 
 from log import log
+from claude_cli import run_cli
 from filters import _SALARY_CONTEXT_RE, _is_plausible_salary
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -124,7 +125,7 @@ def rate_with_claude(job) -> tuple[str, str, str]:
     max_retries = 4
     for attempt in range(max_retries):
         try:
-            result = subprocess.run(
+            result = run_cli(
                 [_CLAUDE_BIN, "-p", prompt, "--model", _CLI_MODEL],
                 capture_output=True, text=True, timeout=_CLI_TIMEOUT, env=_CLI_ENV,
             )

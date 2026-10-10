@@ -107,6 +107,13 @@ _GEN_DOC_MODEL = os.environ.get("GEN_DOC_MODEL", "claude-sonnet-5")
 sys.path.insert(0, str(REPO_ROOT))
 from config import (CANDIDATE_NAME, JOB_DOCS, HOME_METRO_TERMS, HOME_CITY,  # noqa: E402
                     GENERATION_GUARDRAILS, CANDIDATE_BACKGROUND)
+import config as _config  # noqa: E402
+# Optional candidate-specific scoring guidance (which role families, domains and
+# logistics count as a fit). Lives in gitignored config.py; empty by default.
+FIT_TARGETING_GUIDANCE = getattr(_config, "FIT_TARGETING_GUIDANCE", "")
+# Fit scoring model. A 2026-10 calibration against real apply/pass decisions
+# was run on Sonnet; keep the rubric and the model together.
+_FIT_MODEL = os.environ.get("FIT_MODEL", "claude-sonnet-5")
 
 try:  # bare import at runtime and under pytest's prepend path; package fallback
     from rag import retrieve_relevant as rag_retrieve  # noqa: E402
@@ -703,8 +710,8 @@ def _fit_score(value):
 def generate_fit_analysis(job: dict, model: str = None) -> dict:
     """Call Claude to produce a structured fit analysis for a job.
 
-    Pass `model` (e.g. a Haiku alias) to run the analysis on a cheaper/faster
-    model — useful for bulk re-analysis. Defaults to the CLI's default model."""
+    Pass `model` to override the scoring model (e.g. a cheaper one for bulk
+    re-analysis). Defaults to _FIT_MODEL."""
     personal = _read_doc("personal-info.md")
     skills   = _read_doc("technical-skills.md")
     history_parts = [_read_doc(f) for f in JOB_DOCS]
@@ -731,21 +738,19 @@ Description:
 TARGETING CONTEXT (how to score, not resume content):
 {CANDIDATE_BACKGROUND}
 
-David is intentionally pursuing this wider set of roles — Product Owner/Manager,
-Business/Functional/Systems Analyst, Technical Program/Project Manager, Solutions/
-Sales Engineer & Pre-Sales, Implementation/Onboarding Consultant, Technical Account
-Manager, Integration Manager, Developer Experience/API Product, and fintech/banking
-consulting. For roles in these families, score TRANSFERABLE fit fairly: credit his
-API/integration, middleware, and regulated-fintech depth toward the role — do not
-mark a role down solely because the title isn't "Product Owner." Still score
-honestly: real skill or domain gaps, or roles well outside this set, should score
-low. A weak fit is still a weak fit — do not inflate.
+{FIT_TARGETING_GUIDANCE}
 
 Produce a fit analysis as a JSON object with these fields:
 
 Keep everything SHORT and scannable. Prefer tight bullets over paragraphs. This is a quick decision aid, not an essay.
 
-1. "match_score": A number 1-10. Be honest — 7 = strong with minor gaps, 5 = a real stretch.
+1. "match_score": A number 1-10, built from this rubric (sum the parts):
+   - Role family (0-3): 3 = squarely one of the candidate's target roles at their level; 2 = an adjacent target role; 1 = loosely related; 0 = a different function.
+   - Experience coverage (0-3): how much of the REQUIRED experience the documented work covers. 3 = nearly all; 2 = most, with gaps that are learnable tools or domains; 1 = some; 0 = little.
+   - Domain (0-2): 2 = one of the candidate's core domains; 1 = another target industry; 0 = unrelated.
+   - Logistics (0-2): 2 = location and pay fit the targeting context; 1 = workable or unclear; 0 = clearly outside it.
+   Anchors: 8-10 = apply now; 6-7 = solid fit, worth applying; 5 = borderline; 3-4 = weak; 1-2 = not a fit.
+   Do not deduct for missing nice-to-haves or for a title that differs from the candidate's current one.
 
 2. "matches": A markdown bullet list, strongest first, MAX 5 bullets. Each bullet is short: **2-4 word label** — a brief phrase, aim for under ~12 words. No stacked sentences, no long explanations. Real matches only.
 
@@ -760,9 +765,8 @@ IMPORTANT: Even if the job description is short, truncated, or incomplete, you M
 Return ONLY a valid JSON object with keys: match_score, matches, gaps, stories, summary.
 No markdown fences, no preamble."""
 
-    _cmd = [_CLAUDE_BIN, "-p", prompt]
-    if model:
-        _cmd += ["--model", model]
+    # Pin the model: unpinned, scores drift whenever the CLI default changes.
+    _cmd = [_CLAUDE_BIN, "-p", prompt, "--model", model or _FIT_MODEL]
     result = run_cli(
         _cmd,
         capture_output=True, text=True, timeout=_CLI_TIMEOUT, env=_CLI_ENV,

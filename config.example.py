@@ -72,6 +72,18 @@ JOB_DOCS = [
 #   leader at my employers."""
 GENERATION_GUARDRAILS = ""
 
+# Candidate-specific guidance for fit scoring. generate_fit_analysis scores every
+# posting with a generic rubric (role family 0-3, experience coverage 0-3,
+# domain 0-2, logistics 0-2); use this to say what counts for you. Leave "" to
+# rely on CANDIDATE_BACKGROUND alone. Example:
+#   FIT_TARGETING_GUIDANCE = """\
+#   Target roles: Product Owner, Business Analyst, Solutions Engineer.
+#   Core domains (2 points): healthcare and health-tech. Other target industries
+#   (1 point): enterprise SaaS.
+#   Logistics: 2 = remote US or my metro; 1 = hybrid elsewhere; 0 = onsite far away
+#   or pay clearly under my floor."""
+FIT_TARGETING_GUIDANCE = ""
+
 
 # ── SEARCH QUERIES ────────────────────────────────────────────────────────────
 # Edit these to match your target job titles, industries, and specialties.

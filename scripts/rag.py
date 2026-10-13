@@ -24,6 +24,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import threading
 from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import List, Optional, Sequence, Tuple
@@ -279,15 +280,20 @@ def build_or_load(
     return index
 
 
-# In-process cache so repeated generations in one server reuse the index.
+# In-process cache so repeated generations in one server reuse the index (and
+# its embedding model). The lock matters: without it, concurrent generations
+# all miss the empty cache and each load their own ONNX model, which is how a
+# 30-card drag into Drafting once pushed the dashboard to 43 GB.
 _INDEX_CACHE: dict = {}
+_INDEX_LOCK = threading.Lock()
 
 
 def get_index(docs_dir: Path, filenames: Sequence[str]) -> RagIndex:
     key = (str(docs_dir), tuple(filenames))
-    if key not in _INDEX_CACHE:
-        _INDEX_CACHE[key] = build_or_load(docs_dir, filenames)
-    return _INDEX_CACHE[key]
+    with _INDEX_LOCK:
+        if key not in _INDEX_CACHE:
+            _INDEX_CACHE[key] = build_or_load(docs_dir, filenames)
+        return _INDEX_CACHE[key]
 
 
 def retrieve_relevant(

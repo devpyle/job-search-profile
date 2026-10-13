@@ -13,6 +13,7 @@ import hashlib
 import html
 import json
 import os
+import queue
 import re
 import shutil
 import sqlite3
@@ -143,10 +144,17 @@ ACTIVE_STATUSES    = APP_STATUSES  # kept for any legacy references
 # documents generated and advancing to Ready. See move_job / _run_generation.
 FIT_CUTOFF = 5
 
-# Job IDs whose background generation pipeline is currently running. In-memory
+# Job IDs whose background generation pipeline is queued or running. In-memory
 # only (single-user app); a server restart just drops the "generating" badge and
 # the card falls back to showing its real DB status.
 _GENERATING: set = set()
+
+# Cards dropped into Drafting are queued and worked by a small fixed pool, so a
+# bulk drag of dozens of cards runs a couple at a time instead of all at once.
+GEN_WORKERS = 2
+_GEN_QUEUE: "queue.Queue[str]" = queue.Queue()
+_GEN_POOL_LOCK = threading.Lock()
+_gen_pool_started = False
 
 STATUS_COLORS = {
     "Reviewing":    "#3b82f6",
@@ -1711,12 +1719,32 @@ def move_job(job_id):
         existing_docs = data.get_documents(db, job_id)
         if not existing_docs:
             _GENERATING.add(job_id)
-            threading.Thread(
-                target=_run_generation, args=(job_id,), daemon=True
-            ).start()
+            _enqueue_generation(job_id)
             return jsonify({"ok": True, "generating": True})
 
     return jsonify({"ok": True})
+
+
+def _gen_worker():
+    while True:
+        job_id = _GEN_QUEUE.get()
+        try:
+            _run_generation(job_id)
+        finally:
+            _GEN_QUEUE.task_done()
+
+
+def _enqueue_generation(job_id: str):
+    """Queue a card for the background pipeline, starting the worker pool on
+    first use."""
+    global _gen_pool_started
+    with _GEN_POOL_LOCK:
+        if not _gen_pool_started:
+            for i in range(GEN_WORKERS):
+                threading.Thread(target=_gen_worker, name=f"gen-worker-{i}",
+                                 daemon=True).start()
+            _gen_pool_started = True
+    _GEN_QUEUE.put(job_id)
 
 
 def _run_generation(job_id: str):

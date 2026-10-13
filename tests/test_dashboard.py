@@ -486,6 +486,33 @@ def test_move_to_drafting_with_existing_docs_does_not_generate(client, db):
     assert "draft1" not in dash._GENERATING
 
 
+def test_generation_queue_caps_concurrency(monkeypatch):
+    """A bulk drag into Drafting must run at most GEN_WORKERS pipelines at once."""
+    import threading
+    import time
+    import dashboard as dash
+
+    lock = threading.Lock()
+    state = {"running": 0, "peak": 0, "done": 0}
+
+    def fake_run(job_id):
+        with lock:
+            state["running"] += 1
+            state["peak"] = max(state["peak"], state["running"])
+        time.sleep(0.05)
+        with lock:
+            state["running"] -= 1
+            state["done"] += 1
+
+    monkeypatch.setattr(dash, "_run_generation", fake_run)
+    for i in range(8):
+        dash._enqueue_generation(f"bulk{i}")
+    dash._GEN_QUEUE.join()
+
+    assert state["done"] == 8
+    assert state["peak"] <= dash.GEN_WORKERS
+
+
 def test_gen_status_endpoint(client, db):
     _insert_job(db, job_id="gs1", status="Drafting")
     resp = client.get("/jobs/gs1/gen-status")

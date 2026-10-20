@@ -2,6 +2,8 @@
 
 import json
 
+import pytest
+
 from tests.conftest import _insert_job
 
 
@@ -511,6 +513,79 @@ def test_generation_queue_caps_concurrency(monkeypatch):
 
     assert state["done"] == 8
     assert state["peak"] <= dash.GEN_WORKERS
+
+
+def _cli_result(stdout, returncode=0):
+    import subprocess
+    return subprocess.CompletedProcess([], returncode, stdout=stdout, stderr="")
+
+
+_GOOD_FIT = ('{"match_score": 7, "matches": ["a"], "gaps": ["b"], '
+             '"stories": ["c"], "summary": "d"}')
+
+
+def test_fit_analysis_retries_truncated_response(dashboard_app, monkeypatch):
+    import scripts.dashboard as dash
+    calls = []
+
+    def fake_cli(cmd, **kw):
+        calls.append(cmd)
+        # First response is cut off before the closing brace.
+        return _cli_result('{"match_score": 5, "matches": ["**x** — y"' if len(calls) == 1 else _GOOD_FIT)
+
+    monkeypatch.setattr(dash, "run_cli", fake_cli)
+    fit = dash.generate_fit_analysis({"id": "t1", "title": "PO", "company": "Acme"})
+    assert fit["match_score"] == 7.0
+    assert len(calls) == 2
+
+
+def test_fit_analysis_saves_raw_after_final_failure(dashboard_app, monkeypatch, tmp_path):
+    import scripts.dashboard as dash
+    monkeypatch.setattr(dash, "run_cli", lambda cmd, **kw: _cli_result('{"match_score": 5, "matches": ["a"'))
+    monkeypatch.setattr(dash, "FIT_FAILURE_DIR", tmp_path / "fit-failures")
+    with pytest.raises(ValueError):
+        dash.generate_fit_analysis({"id": "t2", "title": "PO", "company": "Acme"})
+    saved = list((tmp_path / "fit-failures").glob("*-t2.txt"))
+    assert len(saved) == 1
+    assert '{"match_score": 5' in saved[0].read_text()
+
+
+def test_fit_analysis_repairs_missing_final_brace(dashboard_app, monkeypatch):
+    import scripts.dashboard as dash
+    calls = []
+
+    def fake_cli(cmd, **kw):
+        calls.append(cmd)
+        # Complete response except the closing brace (seen in production).
+        return _cli_result(_GOOD_FIT[:-1])
+
+    monkeypatch.setattr(dash, "run_cli", fake_cli)
+    fit = dash.generate_fit_analysis({"id": "t3", "title": "PO", "company": "Acme"})
+    assert fit["match_score"] == 7.0
+    assert fit["summary"] == "d"
+    assert len(calls) == 1
+
+
+def test_requeue_stranded_drafting(dashboard_app, db, monkeypatch):
+    import scripts.dashboard as dash
+    import db as ddata
+    _insert_job(db, job_id="nofit", url="https://example.com/job/nofit", status="Drafting")
+    _insert_job(db, job_id="weak", url="https://example.com/job/weak", status="Drafting")
+    _insert_job(db, job_id="goodnodocs", url="https://example.com/job/goodnodocs", status="Drafting")
+    _insert_job(db, job_id="hasdocs", url="https://example.com/job/hasdocs", status="Drafting")
+    _insert_job(db, job_id="reviewing", url="https://example.com/job/reviewing", status="Reviewing")
+    fit = {"matches": "", "gaps": "", "stories": "", "summary": ""}
+    ddata.save_fit_analysis(db, "weak", {**fit, "match_score": 3})
+    ddata.save_fit_analysis(db, "goodnodocs", {**fit, "match_score": 7})
+    ddata.save_fit_analysis(db, "hasdocs", {**fit, "match_score": 8})
+    ddata.insert_document(db, "hasdocs", 1, "# resume", "cover", "")
+    db.commit()
+
+    queued = []
+    monkeypatch.setattr(dash, "_enqueue_generation", queued.append)
+    monkeypatch.setattr(dash, "_GENERATING", set())
+    assert dash.requeue_stranded_drafting() == 2
+    assert sorted(queued) == ["goodnodocs", "nofit"]
 
 
 def test_gen_status_endpoint(client, db):

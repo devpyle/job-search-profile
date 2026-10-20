@@ -2,6 +2,7 @@
 {% block title %}Radar{% endblock %}
 
 {% block content %}
+<div class="radar-sticky" id="radar-sticky">
 <div class="page-header">
   <h2>Job Radar</h2>
   {% if reports %}
@@ -33,10 +34,7 @@
   {% endif %}
 </div>
 
-{% if not jobs %}
-  <div class="empty-state">No jobs found in this report.</div>
-{% else %}
-
+{% if jobs %}
   <!-- Tier filter tabs -->
   <div class="filter-tabs">
     <button class="tab active" onclick="filterTier('all', this)">All ({{ jobs|length }})</button>
@@ -49,6 +47,12 @@
     {% endif %}
     {% endfor %}
   </div>
+{% endif %}
+</div>
+
+{% if not jobs %}
+  <div class="empty-state">No jobs found in this report.</div>
+{% else %}
 
   <div class="radar-list" id="radar-list">
     {% for job in jobs %}
@@ -142,6 +146,14 @@
 
 {% block scripts %}
 <script>
+// Pin the radar controls just below the sticky topnav, whatever its height.
+(function () {
+  const nav = document.querySelector(".topnav");
+  const setNavH = () => nav && document.documentElement.style.setProperty("--topnav-h", nav.offsetHeight + "px");
+  setNavH();
+  window.addEventListener("resize", setNavH);
+})();
+
 function filterTier(tier, btn) {
   document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
   btn.classList.add("active");

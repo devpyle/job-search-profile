@@ -132,6 +132,12 @@ function pollGeneration(jobId) {
   setTimeout(tick, 4000);
 }
 
+// Cards rendered mid-pipeline (after a reload, or when the board is opened while
+// a batch runs) also need polling, or their badge never clears.
+document.querySelectorAll(".job-card.generating").forEach(card => {
+  pollGeneration(card.dataset.jobId);
+});
+
 function updateBadges() {
   document.querySelectorAll(".kanban-col").forEach(col => {
     const count = col.querySelectorAll(".job-card").length;

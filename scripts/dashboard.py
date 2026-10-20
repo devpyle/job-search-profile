@@ -17,6 +17,7 @@ import queue
 import re
 import shutil
 import sqlite3
+import subprocess
 import sys
 import threading
 from datetime import datetime
@@ -53,6 +54,7 @@ DOCS_DIR    = REPO_ROOT / "docs"
 OUTPUT_DIR  = REPO_ROOT / "output" / "job-radar"
 DASH_DIR    = REPO_ROOT / "dashboard"
 DB_PATH     = DASH_DIR / "data" / "jobs.db"
+FIT_FAILURE_DIR = DASH_DIR / "data" / "fit-failures"  # raw unparseable fit responses
 EXPORT_DIR  = REPO_ROOT / "output" / "documents"
 INTERVIEW_PREP_DIR = REPO_ROOT / "output" / "interview-prep"
 
@@ -143,6 +145,9 @@ ACTIVE_STATUSES    = APP_STATUSES  # kept for any legacy references
 # it stays in Drafting with a red bar and its gaps shown, instead of getting
 # documents generated and advancing to Ready. See move_job / _run_generation.
 FIT_CUTOFF = 5
+
+# Tries per fit analysis; the CLI now and then returns a truncated response.
+FIT_ATTEMPTS = 2
 
 # Job IDs whose background generation pipeline is queued or running. In-memory
 # only (single-user app); a server restart just drops the "generating" badge and
@@ -715,6 +720,29 @@ def _fit_score(value):
         return 0
 
 
+def _parse_fit_json(raw: str):
+    """Parse the fit-analysis JSON object, or return None.
+
+    The model sometimes ends an otherwise complete response without the final
+    closing brace, so a response that opens an object but never closes it gets
+    one more try with the brace appended."""
+    candidates = []
+    match = re.search(r"\{.*\}", raw, re.DOTALL)
+    if match:
+        candidates.append(match.group())
+    start = raw.find("{")
+    if start != -1 and not raw.rstrip().endswith("}"):
+        candidates.append(raw[start:].rstrip() + "}")
+    for text in candidates:
+        try:
+            data = json.loads(text, strict=False)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(data, dict):
+            return data
+    return None
+
+
 def generate_fit_analysis(job: dict, model: str = None) -> dict:
     """Call Claude to produce a structured fit analysis for a job.
 
@@ -775,25 +803,38 @@ No markdown fences, no preamble."""
 
     # Pin the model: unpinned, scores drift whenever the CLI default changes.
     _cmd = [_CLAUDE_BIN, "-p", prompt, "--model", model or _FIT_MODEL]
-    result = run_cli(
-        _cmd,
-        capture_output=True, text=True, timeout=_CLI_TIMEOUT, env=_CLI_ENV,
-    )
-    if result.returncode != 0:
-        raise RuntimeError(f"claude CLI error: {result.stderr[:300]}")
+    # The CLI occasionally returns a response cut off before the closing brace
+    # (exit code 0). That is transient, so retry once before giving up.
+    for attempt in range(1, FIT_ATTEMPTS + 1):
+        result = run_cli(
+            _cmd, stdin=subprocess.DEVNULL,
+            capture_output=True, text=True, timeout=_CLI_TIMEOUT, env=_CLI_ENV,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(f"claude CLI error: {result.stderr[:300]}")
 
-    raw   = result.stdout.strip()
-    raw   = raw.replace("```json", "").replace("```", "").strip()
-    match = re.search(r"\{.*\}", raw, re.DOTALL)
-    if match:
-        data = json.loads(match.group(), strict=False)
-        return {
-            "match_score": _fit_score(data.get("match_score", 0)),
-            "matches":     _fit_text(data.get("matches", "")),
-            "gaps":        _fit_text(data.get("gaps", "")),
-            "stories":     _fit_text(data.get("stories", "")),
-            "summary":     _fit_text(data.get("summary", "")),
-        }
+        raw   = result.stdout.strip()
+        raw   = raw.replace("```json", "").replace("```", "").strip()
+        data  = _parse_fit_json(raw)
+        if data is not None:
+            return {
+                "match_score": _fit_score(data.get("match_score", 0)),
+                "matches":     _fit_text(data.get("matches", "")),
+                "gaps":        _fit_text(data.get("gaps", "")),
+                "stories":     _fit_text(data.get("stories", "")),
+                "summary":     _fit_text(data.get("summary", "")),
+            }
+        print(f"[fit] unparseable response (attempt {attempt}/{FIT_ATTEMPTS}, "
+              f"{len(raw)} chars, stderr: {result.stderr.strip()[:200]})", file=sys.stderr)
+
+    # Keep the full response so a recurring failure can be diagnosed.
+    try:
+        FIT_FAILURE_DIR.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        (FIT_FAILURE_DIR / f"{stamp}-{job.get('id', 'job')}.txt").write_text(
+            f"stderr:\n{result.stderr}\n\nstdout:\n{result.stdout}")
+    except OSError:
+        pass
     raise ValueError(f"Could not parse fit analysis response: {raw[:300]}")
 
 
@@ -1747,6 +1788,31 @@ def _enqueue_generation(job_id: str):
     _GEN_QUEUE.put(job_id)
 
 
+def requeue_stranded_drafting() -> int:
+    """Queue Drafting cards whose pipeline never finished: no documents, and
+    either no fit analysis or a good-fit score that should have produced
+    documents.
+
+    A restart kills in-flight pipelines and strands those cards, so the server
+    calls this on startup. Weak fits are left alone: they belong in Drafting,
+    and re-scoring them would just spend calls."""
+    conn = sqlite3.connect(str(DB_PATH))
+    try:
+        ids = [r[0] for r in conn.execute(
+            "SELECT j.id FROM jobs j WHERE j.status='Drafting' "
+            "AND NOT EXISTS (SELECT 1 FROM documents d WHERE d.job_id=j.id) "
+            "AND coalesce((SELECT max(f.match_score) FROM fit_analyses f "
+            "              WHERE f.job_id=j.id), ?) >= ?",
+            (FIT_CUTOFF, FIT_CUTOFF))]
+    finally:
+        conn.close()
+    for job_id in ids:
+        if job_id not in _GENERATING:
+            _GENERATING.add(job_id)
+            _enqueue_generation(job_id)
+    return len(ids)
+
+
 def _run_generation(job_id: str):
     """Background pipeline for a card just moved into Drafting.
 
@@ -1756,7 +1822,8 @@ def _run_generation(job_id: str):
     """
     conn = sqlite3.connect(str(DB_PATH))
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA busy_timeout=5000")
+    # Batch scripts and the radar write to the same DB; wait out their locks.
+    conn.execute("PRAGMA busy_timeout=30000")
     try:
         row = data.get_job(conn, job_id)
         if not row:
@@ -2250,6 +2317,9 @@ def delete_job(job_id):
 
 if __name__ == "__main__":
     init_db()
+    requeued = requeue_stranded_drafting()
+    if requeued:
+        print(f"  Requeued {requeued} stranded Drafting card(s)", flush=True)
     print("─" * 50)
     print("  Job Search Dashboard")
     print("  http://localhost:5000")
